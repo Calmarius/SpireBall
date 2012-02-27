@@ -2,5 +2,6 @@
 <CodeBlocks_workspace_file>
 	<Workspace title="Workspace">
 		<Project filename="spireball/spireball.cbp" active="1" />
+		<Project filename="unittest/unittest.cbp" />
 	</Workspace>
 </CodeBlocks_workspace_file>

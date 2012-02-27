@@ -14,6 +14,9 @@
 				<Compiler>
 					<Add option="-g" />
 				</Compiler>
+				<Linker>
+					<Add library="../spireball/libspireball.a" />
+				</Linker>
 			</Target>
 			<Target title="Release">
 				<Option output="bin/Release/unittest" prefix_auto="1" extension_auto="1" />

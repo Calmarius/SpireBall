@@ -7,6 +7,10 @@
  - Create the EPL engine
     - Create a 3D phisics library.
         - Vector and matrix algebra - DONE!
+        - Body movement
+        - Body dynamics
+            - Impulses
+            - Forces
         - Dynamics part
             - Code the calculations when force acts on the body.
         - Collision detection part.

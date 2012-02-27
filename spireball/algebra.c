@@ -40,7 +40,10 @@ void ALG_multiplyMatrix(double *result, const double *a, const double *b)
     {
         for (j = 0; j < 3; j++)
         {
-            result[3*i + j] = a[3*i + 0]*b[j] + a[3*i + 1]*b[j + 3] + a[3*i + 2]*b[j + 6];
+            result[3*i + j] =
+                a[3*i + 0]*b[j] +
+                a[3*i + 1]*b[j + 3] +
+                a[3*i + 2]*b[j + 6];
         }
     }
 }
