@@ -21,6 +21,8 @@ double ALG_dotProduct(const double *a, const double *b)
 
 void ALG_crossProduct(double *result, const double *a, const double *b)
 {
+    assert(result != a);
+    assert(result != b);
     result[0] = a[1]*b[2] - a[2]*b[1];
     result[1] = a[2]*b[0] - a[0]*b[2];
     result[2] = a[0]*b[1] - a[1]*b[0];
@@ -28,6 +30,7 @@ void ALG_crossProduct(double *result, const double *a, const double *b)
 
 void ALG_transform(double *result, const double *v, const double *matrix)
 {
+    assert(result != v);
     result[0] = matrix[0]*v[0] + matrix[1]*v[1] + matrix[2]*v[2];
     result[1] = matrix[3]*v[0] + matrix[4]*v[1] + matrix[5]*v[2];
     result[2] = matrix[6]*v[0] + matrix[7]*v[1] + matrix[8]*v[2];
@@ -36,6 +39,8 @@ void ALG_transform(double *result, const double *v, const double *matrix)
 void ALG_multiplyMatrix(double *result, const double *a, const double *b)
 {
     int i,j;
+    assert(result != a);
+    assert(result != b);
     for (i = 0; i < 3; i++)
     {
         for (j = 0; j < 3; j++)

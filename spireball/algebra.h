@@ -59,5 +59,23 @@ void ALG_transform(double *result, const double *v, const double *matrix);
  * @param [in] a,b The two matrices to multply (9 element arrays. Elements stored in row major order.)
  */
 void ALG_multiplyMatrix(double *result, const double *a, const double *b);
+/**
+ * Translates the matrix with the given matrix.
+ *
+ * M = M + T
+ *
+ * @param [in,out] M The matrix to translate
+ * @param [in] T The translator matrix.
+ */
+void ALG_translateMatrix(double *M, double *T);
+/**
+ * Scales the matrix with the given factor.
+ *
+ * M = fM
+ *
+ * @param [in,out] M The matrix to scale.
+ * @param [in] f The scale factor.
+ */
+void ALG_scaleMatrix(double *M, double f);
 
 #endif // ALG_Vector_H

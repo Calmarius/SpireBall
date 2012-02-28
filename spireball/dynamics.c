@@ -1,3 +1,4 @@
+#include <string.h>
 #include "dynamics.h"
 #include "algebra.h"
 
@@ -24,7 +25,12 @@ double computeMomentOfInertia(const double *tensor, const double *axis)
  * @param [in,out] body The body to move.
  * @param [in] timeStep The time interval.
  */
-void moveBody(DYN_Body *body, double timeStep)
+void moveBody(DYN_Context *context, DYN_Body *body)
 {
-    // CONTINUE HERE!
+    double newOrientation[9];
+    // Translate the body.
+    ALG_translate(body->position, body->velocity);
+    // Rotate the body:
+    ALG_multiplyMatrix(newOrientation, body->orientation, body->rotation);
+    memcpy(body->orientation, newOrientation, sizeof(newOrientation));
 }
