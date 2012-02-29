@@ -77,5 +77,33 @@ void ALG_translateMatrix(double *M, double *T);
  * @param [in] f The scale factor.
  */
 void ALG_scaleMatrix(double *M, double f);
+/**
+ * Resizes the vector to the length of 1. Null vectors remain untouched.
+ *
+ * Involves a square root and one division.
+ *
+ * @param [in,out] v The vector to resize
+ */
+void ALG_normalizeVector(double *v);
+/**
+ * @param [in] v The vector (which has 3 elements).
+ *
+ * @return The vector's length.
+ *
+ * The algorithm needs to calculate the square root of a number.
+ * which is slow.
+ */
+double ALG_getVectorLength(const double *v);
+/**
+ * Creates a 3×3 matrix that rotates a vector around the given angle.
+ *
+ * @param [in,out] M The matrix (9 element array). The matrix will be stored in row major order.
+ * @param [in] axis The axis to rotate around. The vector's length must be 1 to get the correct results.
+ * @param [in] angle The angle of rotation in radians.
+ *
+ * The algorithm involves the calculation of the sine and cosine of the given angle.
+ */
+void ALG_createRotationMatrix(double *M, const double *axis, double angle);
+
 
 #endif // ALG_Vector_H

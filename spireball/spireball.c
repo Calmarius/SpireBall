@@ -7,7 +7,7 @@
  - Create the EPL engine
     - Create a 3D phisics library.
         - Vector and matrix algebra - DONE!
-        - Body movement
+        - Body movement - DONE!
         - Body dynamics
             - Impulses
             - Forces

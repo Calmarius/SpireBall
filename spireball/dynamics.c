@@ -30,7 +30,22 @@ void moveBody(DYN_Context *context, DYN_Body *body)
     double newOrientation[9];
     // Translate the body.
     ALG_translate(body->position, body->velocity);
-    // Rotate the body:
+    // Rotate the body
     ALG_multiplyMatrix(newOrientation, body->orientation, body->rotation);
     memcpy(body->orientation, newOrientation, sizeof(newOrientation));
+}
+
+/**
+ * Updates the rotation matrix for a body.
+ *
+ * @param [in,out] body The body to update the rotation of.
+ */
+void updateRotation(DYN_Body *body)
+{
+    double angularSpeed = ALG_getVectorLength(body->angularVelocity);
+    double axis[3];
+
+    memcpy(axis, body->angularVelocity, sizeof(axis));
+    ALG_normalizeVector(axis);
+    ALG_createRotationMatrix(body->rotation, axis, angularSpeed);
 }
