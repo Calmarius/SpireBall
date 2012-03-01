@@ -27,7 +27,7 @@ typedef struct DYN_Body
      */
     double angularVelocity[3];
     /**
-     * Cached transposed rotation matrix. The orientation is mulitplied with it.
+     * Cached rotation matrix. The orientation is multiplied with it.
      */
     double rotation[9];
     /**

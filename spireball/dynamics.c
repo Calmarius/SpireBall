@@ -1,3 +1,5 @@
+#include <assert.h>
+#include <math.h>
 #include <string.h>
 #include "dynamics.h"
 #include "algebra.h"
@@ -20,22 +22,6 @@ double computeMomentOfInertia(const double *tensor, const double *axis)
 }
 
 /**
- * Moves the body using its attributes.
- *
- * @param [in,out] body The body to move.
- * @param [in] timeStep The time interval.
- */
-void moveBody(DYN_Context *context, DYN_Body *body)
-{
-    double newOrientation[9];
-    // Translate the body.
-    ALG_translate(body->position, body->velocity);
-    // Rotate the body
-    ALG_multiplyMatrix(newOrientation, body->orientation, body->rotation);
-    memcpy(body->orientation, newOrientation, sizeof(newOrientation));
-}
-
-/**
  * Updates the rotation matrix for a body.
  *
  * @param [in,out] body The body to update the rotation of.
@@ -49,3 +35,69 @@ void updateRotation(DYN_Body *body)
     ALG_normalizeVector(axis);
     ALG_createRotationMatrix(body->rotation, axis, angularSpeed);
 }
+
+/**
+ * Applies impulse to a body.
+ *
+ * @param [in] context The context the body is in.
+ * @param [in,out] body The body to apply the impulse to.
+ * @param [in] pointOfForce The point where the force applied.
+ * @param [in] impulseVector The direction and strength of the impulse (in Ns)
+ *
+ */
+void applyImpulse(
+    DYN_Context *context,
+    DYN_Body *body,
+    const double *pointOfForce,
+    const double *impulseVector
+)
+{
+    double radius[3]; // vector from the mass center to the point where the force applies.
+    double angularImpulse[3]; // The angular impulse applied to the body.
+    double tmp[3];
+
+    ALG_getPointToPointVector(radius, body->position, pointOfForce);
+    ALG_crossProduct(angularImpulse, radius, impulseVector);
+    // Apply the change to the linear momentum
+    memcpy(tmp, impulseVector, sizeof(tmp));
+    ALG_scale(tmp, context->timeStep / body->staticAttributes->mass);
+    ALG_translate(body->velocity, tmp);
+    if (!ALG_isNullVector(angularImpulse))
+    {
+        double bodyAxis[3]; // Axis is in the object space.
+        double momentOfInertia;
+        double *deltaOmega;
+
+        // Calculate the moment of intertia for the given axis.
+        assert(ALG_solveSystem3(bodyAxis, body->orientation, angularImpulse));
+        ALG_normalizeVector(bodyAxis);
+        // Calculate It * t
+        ALG_transform(tmp, bodyAxis, body->staticAttributes->intertiaTensor);
+        momentOfInertia = ALG_dotProduct(tmp, bodyAxis);
+        assert(fabs(momentOfInertia) > 1e-9);
+        // Calculate the change of the angular momentum.
+        deltaOmega = angularImpulse;
+        ALG_scale(deltaOmega, context->timeStep / momentOfInertia);
+        ALG_translate(body->angularVelocity, deltaOmega);
+        // Update rotation properties
+        updateRotation(body);
+    }
+
+}
+
+/**
+ * Moves the body using its attributes.
+ *
+ * @param [in,out] body The body to move.
+ * @param [in] timeStep The time interval.
+ */
+void moveBody(DYN_Context *context, DYN_Body *body)
+{
+    double newOrientation[9];
+    // Translate the body.
+    ALG_translate(body->position, body->velocity);
+    // Rotate the body
+    ALG_multiplyMatrix(newOrientation, body->rotation, body->orientation);
+    memcpy(body->orientation, newOrientation, sizeof(newOrientation));
+}
+

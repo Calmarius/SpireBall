@@ -105,5 +105,47 @@ double ALG_getVectorLength(const double *v);
  */
 void ALG_createRotationMatrix(double *M, const double *axis, double angle);
 
+/**
+ * Returns the vector that point from one point to another.
+ *
+ * @param [in,out] v 3 element array of the element of the resulting vector.
+ * @param [in] a,b The the points (3 element vectors). v will be the vector that points from a to b.
+ */
+void ALG_getPointToPointVector(double *v, const double *a, const double *b);
+/**
+ * Transposes a matrix.
+ *
+ * @param [in,out] M A 3×3 matrix that will be transposed.
+ */
+void ALG_transposeMatrix(double *M);
+
+/**
+ * Solves a linear system of 3 equations. The equations are given in the following form:
+ *
+ * Ax = b
+ *
+ * @param [in,out] x Array of 3 elements. It will store the result.
+ * @param [in] A The 3×3 matrix of the equation in row major order.
+ * @param [in] b The vector of the right side (a vector of 3 elements.)
+ *
+ * @retval Nonzero if single solution is found.
+ * @retval Zero If there is no solution or infinite amount of solutions exist.
+ */
+int ALG_solveSystem3(double *x, const double *A, const double *b);
+/**
+ * Calculates the determinant of a matrix.
+ *
+ * @param [in] M A 3×3 matrix in row major order.
+ *
+ * @return The determinant.
+ */
+double ALG_getDeterminant(const double *M);
+/**
+ * @param [in] v The vector (array of 3 elements)
+ *
+ * @retval Nonzero if the vector is null vector.
+ * @retval Zero otherwise
+ */
+int ALG_isNullVector(const double *v);
 
 #endif // ALG_Vector_H

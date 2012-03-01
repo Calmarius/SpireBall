@@ -1,4 +1,9 @@
+#include <assert.h>
+#include <math.h>
+#include <string.h>
+
 #include "algebra.h"
+
 
 void ALG_translate(double *p, const double *v)
 {
@@ -110,3 +115,61 @@ void ALG_createRotationMatrix(double *M, const double *axis, double angle)
     M[8] = z2*omCosAlpha + cosAlpha;
 }
 
+void ALG_getPointToPointVector(double *v, const double *a, const double *b)
+{
+    v[0] = b[0] - a[0];
+    v[1] = b[1] - a[1];
+    v[2] = b[2] - a[2];
+}
+
+void ALG_transposeMatrix(double *M)
+{
+    double tmp;
+    tmp=M[1*3 + 0]; M[1*3 + 0]=M[0*3 + 1]; M[0*3 + 1]=tmp;
+    tmp=M[2*3 + 0]; M[2*3 + 0]=M[0*3 + 2]; M[0*3 + 2]=tmp;
+    tmp=M[2*3 + 1]; M[2*3 + 1]=M[1*3 + 2]; M[1*3 + 2]=tmp;
+}
+
+double ALG_getDeterminant(const double *M)
+{
+    return
+        M[0]*(M[4]*M[8] - M[5]*M[7]) -
+        M[1]*(M[3]*M[8] - M[5]*M[6]) +
+        M[2]*(M[3]*M[7] - M[4]*M[6]);
+}
+
+int ALG_solveSystem3(double *x, const double *A, const double *b)
+{
+    double det = ALG_getDeterminant(A);
+    double copyOfA[9];
+    double rdet;
+
+    if (fabs(det) < 1e-9) return 0;
+    rdet = 1.0 / det;
+
+    memcpy(copyOfA, A, sizeof(copyOfA));
+    copyOfA[0] = b[0];
+    copyOfA[3] = b[1];
+    copyOfA[6] = b[2];
+    x[0] = ALG_getDeterminant(copyOfA) * rdet;
+    memcpy(copyOfA, A, sizeof(copyOfA));
+    copyOfA[1] = b[0];
+    copyOfA[4] = b[1];
+    copyOfA[7] = b[2];
+    x[1] = ALG_getDeterminant(copyOfA) * rdet;
+    memcpy(copyOfA, A, sizeof(copyOfA));
+    copyOfA[2] = b[0];
+    copyOfA[5] = b[1];
+    copyOfA[8] = b[2];
+    x[2] = ALG_getDeterminant(copyOfA) * rdet;
+
+    return 1;
+}
+
+int ALG_isNullVector(const double *v)
+{
+    return
+        (fabs(v[0]) < 1e-9) &&
+        (fabs(v[1]) < 1e-9) &&
+        (fabs(v[2]) < 1e-9);
+}

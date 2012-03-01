@@ -9,7 +9,7 @@
         - Vector and matrix algebra - DONE!
         - Body movement - DONE!
         - Body dynamics
-            - Impulses
+            - Impulses - DONE!
             - Forces
         - Dynamics part
             - Code the calculations when force acts on the body.
