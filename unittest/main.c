@@ -42,6 +42,196 @@ typedef struct AlgebraTranslateTestCase
     double modificator[3];
 } AlgebraTranslateTestCase;
 
+typedef struct AlgebraDeterminantTestCase
+{
+    double matrix[9];
+    double expected;
+} AlgebraDeterminantTestCase;
+
+typedef struct AlgebraSystem3TestCase
+{
+    double matrix[9];
+    double rightSide[3];
+    double expectedSolution[3];
+    int expectedReturn;
+} AlgebraSystem3TestCase;
+
+typedef struct AlgebraTransposeTestCase
+{
+    double matrix[9];
+    double expected[9];
+} AlgebraTransposeTestCase;
+
+typedef struct AlgebraRotationTestCase
+{
+    double axis[3];
+    double angle;
+    double expected[9];
+} AlgebraRotationTestCase;
+
+AlgebraRotationTestCase rotationTests[] =
+{
+    {
+        {
+            0.267261241912424, 0.534522483824849, 0.801783725737273
+        },
+        0,
+        {
+            1, 0, 0,
+            0, 1, 0,
+            0, 0, 1
+        }
+    },
+    {
+        {
+            1, 0, 0
+        },
+        0.523598775598299,
+        {
+            1, 0, 0,
+            0, 0.866025403784439, -0.5,
+            0, 0.5, 0.866025403784439
+        }
+    },
+    {
+        {
+            0, 1, 0
+        },
+        0.523598775598299,
+        {
+            0.866025403784439, 0, 0.5,
+            0, 1, 0,
+            -0.5, 0, 0.866025403784439
+        }
+    },
+    {
+        {
+            0, 1, 0
+        },
+        0.523598775598299,
+        {
+            0.866025403784439, 0, 0.5,
+            0, 1, 0,
+            -0.5, 0, 0.866025403784439
+        }
+    },
+    {
+        {
+            0.168688971241019, 0.947253453891875, 0.2724975689278
+        },
+        1.30899693899575,
+        {
+            0.279910067392077, -0.14477823734084, 0.949046688084966,
+            0.381646641515855, 0.923872641440063, 0.0283757540556784,
+            -0.8809064622264, 0.354257821919346, 0.313855381372901
+        }
+    }
+};
+
+AlgebraTransposeTestCase transposeTests[] =
+{
+    {
+        {
+            1, 2, 3,
+            4, 5, 6,
+            7, 8, 9
+        },
+        {
+            1, 4, 7,
+            2, 5, 8,
+            3, 6, 9
+        }
+    }
+};
+
+AlgebraSystem3TestCase system3Tests[] =
+{
+    {
+        {
+            5, 7, 9,
+            9, 11, 15,
+            34, 5, 10
+        },
+        {
+            13, 20, 66
+        },
+        {
+            351.0/154.0,
+            368.0/77.0,
+            -545.0/154.0
+        },
+        1
+    },
+    {
+        {
+            5, 17, 9,
+            19, 11, 15,
+            34, 5, 10
+        },
+        {
+            93, 40, 66
+        },
+        {
+            8551.0/3104.0,
+            808.0/97.0,
+            -21515.0/3104.0
+        },
+        1
+    },
+    {
+        {
+            1, 2, 3,
+            4, 5, 6,
+            7, 8, 9
+        },
+        {
+            6, 7, 8
+        },
+        {
+            0,
+            0,
+            0
+        },
+        0
+    }
+};
+
+AlgebraDeterminantTestCase determinantTests[] =
+{
+    {
+        {
+            1, 5, 5,
+            5, 4, 4,
+            7, 5, 3
+        },
+        42
+    },
+    {
+        {
+            1, 5, 5,
+            5,	1, 2,
+            7, 1, 1
+        },
+        34
+    },
+    {
+        {
+            1, 0, 0,
+            0,	1, 0,
+            0, 0, 1
+        },
+        1
+    },
+    {
+        {
+            1, 4, 7,
+            2, 5, 8,
+            3, 6, 9
+        },
+        0
+    }
+};
+
 AlgebraTranslateTestCase translateTests[] =
 {
     {
@@ -348,6 +538,146 @@ void runTranslateTests()
         if (passed) printf("Translate test #%d passed.\n", i + 1);
     }
 }
+
+void runDeterminantTests()
+{
+    int N = sizeof (determinantTests) / sizeof (determinantTests[0]);
+    int i;
+
+    for (i = 0; i < N; i++)
+    {
+        AlgebraDeterminantTestCase *current = &determinantTests[i];
+        char passed = 1;
+        double result;
+
+        result = ALG_getDeterminant(current->matrix);
+        // check
+        if (fabs(result - current->expected) > 1e-9)
+        {
+            printf("Determinant test #%d FAILED!\n", i + 1);
+            printf("expected: %g\n", current->expected);
+            printf("Result: %g\n", result);
+            passed = 0;
+        }
+        if (passed) printf("Determinant test #%d passed.\n", i + 1);
+    }
+}
+
+void runSystem3Tests()
+{
+    int N = sizeof (system3Tests) / sizeof (system3Tests[0]);
+    int i;
+
+    for (i = 0; i < N; i++)
+    {
+        AlgebraSystem3TestCase *current = &system3Tests[i];
+        char passed = 1;
+        double retVal;
+        double result[3];
+
+        retVal = ALG_solveSystem3(result, current->matrix, current->rightSide);
+        if (!!retVal == !!current->expectedReturn)
+        {
+            if (retVal)
+            {
+                int j;
+                for (j = 0; j < 3; j++)
+                {
+                    if (fabs(result[j] - current->expectedSolution[j]) > 1e-9)
+                    {
+                        printf("System3 test #%d FAILED!\n", i + 1);
+                        printf("Matrix:\n");
+                        dumpMatrix(current->matrix);
+                        printf("right side vector:\n");
+                        dumpVector(current->rightSide);
+                        printf("expected result:\n");
+                        dumpVector(current->expectedSolution);
+                        printf("Result:\n");
+                        dumpVector(result);
+                        passed = 0;
+                        break;
+                    }
+                }
+            }
+        }
+        else
+        {
+            printf("System3 test #%d FAILED!\n", i + 1);
+            printf("Wrong return!\n");
+            passed = 0;
+        }
+        // check
+        if (passed) printf("System3 test #%d passed.\n", i + 1);
+    }
+}
+
+void runTransposeTests()
+{
+    int N = sizeof (transposeTests) / sizeof (transposeTests[0]);
+    int i;
+
+    for (i = 0; i < N; i++)
+    {
+        AlgebraTransposeTestCase *current = &transposeTests[i];
+        int j;
+        char passed = 1;
+        double before[9];
+
+        memcpy(before, current->matrix, sizeof(before));
+
+        ALG_transposeMatrix(current->matrix);
+
+        // check
+        for (j = 0; j < 9; j++)
+        {
+            if (fabs(current->matrix[j] - current->expected[j]) > 1e-9)
+            {
+                printf("Transpose test #%d FAILED!\n", i + 1);
+                printf("before:\n");
+                dumpMatrix(before);
+                printf("expected:\n");
+                dumpMatrix(current->expected);
+                printf("Result:\n");
+                dumpMatrix(current->matrix);
+                passed = 0;
+            }
+        }
+        if (passed) printf("Transpose test #%d passed.\n", i + 1);
+    }
+}
+
+void runRotationTests()
+{
+    int N = sizeof (rotationTests) / sizeof (rotationTests[0]);
+    int i;
+
+    for (i = 0; i < N; i++)
+    {
+        AlgebraRotationTestCase *current = &rotationTests[i];
+        int j;
+        char passed = 1;
+        double result[9];
+
+        ALG_createRotationMatrix(result, current->axis, current->angle);
+        // check
+        for (j = 0; j < 9; j++)
+        {
+            if (fabs(result[j] - current->expected[j]) > 1e-9)
+            {
+                printf("Rotation test #%d FAILED!\n", i + 1);
+                printf("Axis:\n");
+                dumpVector(current->axis);
+                printf("Angle: %g\n", current->angle);
+                printf("Expected:\n");
+                dumpMatrix(current->expected);
+                printf("Result:\n");
+                dumpMatrix(result);
+                passed = 0;
+            }
+        }
+        if (passed) printf("Rotation test #%d passed.\n", i + 1);
+    }
+}
 //
 int main()
 {
@@ -361,6 +691,14 @@ int main()
     runDotProductTests();
     printf("Running translate tests:\n");
     runTranslateTests();
+    printf("Running determinant tests:\n");
+    runDeterminantTests();
+    printf("Running sytem3 tests:\n");
+    runSystem3Tests();
+    printf("Running transpose tests:\n");
+    runTransposeTests();
+    printf("Running transpose tests:\n");
+    runRotationTests();
     printf("Testing finished.\n");
     fgetc(stdin);
     return 0;

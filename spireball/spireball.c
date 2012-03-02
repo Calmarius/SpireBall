@@ -21,6 +21,7 @@
                 - Narrow phase collision detection.
                 - Prefer continuous collision detection.
     - Write network code.
+- Visualization tool.
  - Make a test program for the library.
  - Create the game UI
  - Artwork
