@@ -2,12 +2,30 @@
 #define DYNAMICS_H
 
 /**
+ * An enum of the possible shapes.
+ */
+typedef enum DYN_Shape
+{
+    DYN_CUBOID ///< A cuboid
+} DYN_Shape;
+/**
  * Represents the static attributes of a body.
  */
 typedef struct DYN_BodyStaticAttributes
 {
     double mass; ///< Mass of the body.
     double intertiaTensor[9]; ///< Intertia tensor matrix.
+    DYN_Shape shape;
+    union
+    {
+        struct
+        {
+            double width;  ///< Dimension in the X direction
+            double height;  ///< Dimension in the Y direction
+            double deoth;  ///< Dimension in the Z direction
+        } cuboidAttributes; ///< Attributes of a cuboid.
+    };
+
 } DYN_BodyStaticAttributes;
 
 /**
@@ -36,9 +54,47 @@ typedef struct DYN_Body
     DYN_BodyStaticAttributes *staticAttributes;
 } DYN_Body;
 
+/**
+ * Represents a dynaics context. This struct is the `world`.
+ */
 typedef struct DYN_Context
 {
-    double timeStep;
+    double timeStep; ///< Fixed timestep value. All objects in the world are moving with this time step.
+    DYN_Body *bodies; ///< Array that stores the hot attributes of the bodies.
+    int bodyCount; ///< Count of bodies.
+    int bodiesAllocated; ///< Allocated space for the bodies.
+    DYN_BodyStaticAttributes *staticAttributes; ///< Array that stores the the static attributes of the body.
 } DYN_Context;
+
+/**
+ * Initializes a dynamics context.
+ *
+ * @param [in,out] context The context struct.
+ */
+void DYN_initialize(DYN_Context *context);
+/**
+ * Deinitializes the dynamics context. Releases the associated resources.
+ *
+ * @param [in,out] context
+ */
+void DYN_deinitialize(DYN_Context *context);
+/**
+ * Steps the objects in the world. This is the hottest function in this module.
+ *
+ * @param [in,out] The world.
+ */
+void DYN_stepWorld(DYN_Context *context);
+/**
+ * Adds a body to the world.
+ *
+ * @param [in,out] context The dynamics context.
+ * @param [in] body A filled body structure.
+ * @param [in] attribs A filled structure of the static attributes of the body.
+ */
+void DYN_addBody(
+    DYN_Context *context,
+    const DYN_Body *body,
+    const DYN_BodyStaticAttributes *attribs
+);
 
 #endif // DYNAMICS_H

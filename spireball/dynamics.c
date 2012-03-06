@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <math.h>
 #include <string.h>
+#include <stdlib.h>
 #include "dynamics.h"
 #include "algebra.h"
 
@@ -100,4 +101,69 @@ void moveBody(DYN_Context *context, DYN_Body *body)
     ALG_multiplyMatrix(newOrientation, body->rotation, body->orientation);
     memcpy(body->orientation, newOrientation, sizeof(newOrientation));
 }
+
+void DYN_initialize(DYN_Context *context)
+{
+    context->bodies = 0;
+    context->bodiesAllocated = 0;
+}
+
+void DYN_deinitialize(DYN_Context *context)
+{
+    free(context->bodies);
+    free(context->staticAttributes);
+}
+
+void DYN_stepWorld(DYN_Context *context)
+{
+    int i;
+    // STEP 1: Moving bodies
+    for (i = 0; i < context->bodyCount; i++)
+    {
+        moveBody(context, &context->bodies[i]);
+    }
+    // STEP 2: Collision detection
+    // STEP 3: Collsion resolution
+}
+
+void DYN_addBody(
+    DYN_Context *context,
+    const DYN_Body *body,
+    const DYN_BodyStaticAttributes *attribs
+)
+{
+    if (context->bodyCount == context->bodiesAllocated)
+    {
+        if (!context->bodiesAllocated)
+        {
+            context->bodiesAllocated = 20;
+        }
+        else
+        {
+            context->bodiesAllocated <<= 1;
+        }
+        context->bodies = realloc(
+            context->bodies,
+            sizeof(DYN_Body) * context->bodiesAllocated
+        );
+        context->staticAttributes = realloc(
+            context->staticAttributes,
+            sizeof(DYN_BodyStaticAttributes) * context->bodiesAllocated
+        );
+    }
+    context->bodies[context->bodyCount] = *body;
+    context->staticAttributes[context->bodyCount] = *attribs;
+    context->bodyCount++;
+}
+
+
+
+
+
+
+
+
+
+
+
 
