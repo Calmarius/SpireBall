@@ -17,6 +17,7 @@
 				<Linker>
 					<Add library="/usr/lib/libGL.so" />
 					<Add library="/usr/lib/libGLU.so" />
+					<Add library="../spireball/libspireball.a" />
 				</Linker>
 			</Target>
 			<Target title="Release">
