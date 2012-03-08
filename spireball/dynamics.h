@@ -22,7 +22,7 @@ typedef struct DYN_BodyStaticAttributes
         {
             double width;  ///< Dimension in the X direction
             double height;  ///< Dimension in the Y direction
-            double deoth;  ///< Dimension in the Z direction
+            double depth;  ///< Dimension in the Z direction
         } cuboidAttributes; ///< Attributes of a cuboid.
     };
 
@@ -70,8 +70,9 @@ typedef struct DYN_Context
  * Initializes a dynamics context.
  *
  * @param [in,out] context The context struct.
+ * @param [in] timeStep The time step of one step.
  */
-void DYN_initialize(DYN_Context *context);
+void DYN_initialize(DYN_Context *context, double timeStep);
 /**
  * Deinitializes the dynamics context. Releases the associated resources.
  *
@@ -96,5 +97,14 @@ void DYN_addBody(
     const DYN_Body *body,
     const DYN_BodyStaticAttributes *attribs
 );
+
+/**
+ * Calculates the mass and the inertia tensor of the body.
+ *
+ * @param [in,out] attributes The attributes of the body, the shape must be set.
+ * @param [in] density The density of the
+ */
+void DYN_calculateMass(DYN_BodyStaticAttributes *attributes, double density);
+
 
 #endif // DYNAMICS_H

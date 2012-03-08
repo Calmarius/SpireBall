@@ -8,6 +8,7 @@
 #include <GL/gl.h>
 #include <GL/glu.h>
 #include "../spireball/algebra.h"
+#include "../spireball/dynamics.h"
 
 double camPosition[3] = {0, 0, 0};
 double camOrientation[9] =
@@ -35,6 +36,104 @@ struct
 char mouseGrabbed = 0;
 int mouseXRef, mouseYRef; // Reference mouse pos.
 int mouseXCurrent, mouseYCurrent;
+DYN_Context world;
+
+void drawCuboid(const DYN_Body *body, const DYN_BodyStaticAttributes *attributes)
+{
+    // FIXME: do this with a display list!
+    double w = attributes->cuboidAttributes.width;
+    double h = attributes->cuboidAttributes.height;
+    double d = attributes->cuboidAttributes.depth;
+    double corners[8][3] =
+    {
+        {w, h, d},
+        {w, h, -d},
+        {w, -h, d},
+        {w, -h, -d},
+        {-w, h, d},
+        {-w, h, -d},
+        {-w, -h, d},
+        {-w, -h, -d}
+    };
+    double transformedCorners[8][3];
+    int i;
+
+    glColor3f(1,1,1);
+    for (i = 0; i < 8; i++)
+    {
+        ALG_transform(transformedCorners[i], corners[i], body->orientation);
+    }
+    for (i = 0; i < 8; i++)
+    {
+        ALG_translate(transformedCorners[i], body->position);
+    }
+    glVertex3dv(transformedCorners[0]);
+    glVertex3dv(transformedCorners[1]);
+    glVertex3dv(transformedCorners[0]);
+    glVertex3dv(transformedCorners[2]);
+    glVertex3dv(transformedCorners[0]);
+    glVertex3dv(transformedCorners[4]);
+
+    glVertex3dv(transformedCorners[7]);
+    glVertex3dv(transformedCorners[6]);
+    glVertex3dv(transformedCorners[7]);
+    glVertex3dv(transformedCorners[5]);
+    glVertex3dv(transformedCorners[7]);
+    glVertex3dv(transformedCorners[3]);
+
+    glVertex3dv(transformedCorners[3]);
+    glVertex3dv(transformedCorners[2]);
+    glVertex3dv(transformedCorners[3]);
+    glVertex3dv(transformedCorners[1]);
+
+    glVertex3dv(transformedCorners[5]);
+    glVertex3dv(transformedCorners[1]);
+    glVertex3dv(transformedCorners[5]);
+    glVertex3dv(transformedCorners[4]);
+
+    glVertex3dv(transformedCorners[6]);
+    glVertex3dv(transformedCorners[2]);
+    glVertex3dv(transformedCorners[6]);
+    glVertex3dv(transformedCorners[4]);
+
+    glVertex3dv(transformedCorners[4]);
+    glVertex3dv(transformedCorners[5]);
+    glVertex3dv(transformedCorners[4]);
+    glVertex3dv(transformedCorners[6]);
+
+    glVertex3dv(transformedCorners[2]);
+    glVertex3dv(transformedCorners[6]);
+    glVertex3dv(transformedCorners[2]);
+    glVertex3dv(transformedCorners[3]);
+
+    glVertex3dv(transformedCorners[1]);
+    glVertex3dv(transformedCorners[5]);
+    glVertex3dv(transformedCorners[1]);
+    glVertex3dv(transformedCorners[3]);
+}
+
+void drawBody(const DYN_Body *body)
+{
+    switch (body->staticAttributes->shape)
+    {
+        case DYN_CUBOID:
+        {
+            drawCuboid(body, body->staticAttributes);
+        }
+        break;
+    }
+}
+
+void drawBodies()
+{
+    int i;
+    glBegin(GL_LINES);
+    for (i = 0; i < world.bodyCount; i++)
+    {
+        drawBody(&world.bodies[i]);
+    }
+    glEnd();
+}
 
 void draw()
 {
@@ -43,9 +142,15 @@ void draw()
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
     gluLookAt(
-        camPosition[0], camPosition[1], camPosition[2],
-        camPosition[0] - camOrientation[2], camPosition[1] - camOrientation[5], camPosition[2] - camOrientation[8],
-        camOrientation[1], camOrientation[4], camOrientation[7]
+        camPosition[0],
+        camPosition[1],
+        camPosition[2],
+        camPosition[0] - camOrientation[2],
+        camPosition[1] - camOrientation[5],
+        camPosition[2] - camOrientation[8],
+        camOrientation[1],
+        camOrientation[4],
+        camOrientation[7]
     );
 
     // Drawing
@@ -70,6 +175,8 @@ void draw()
         glVertex3f(0, 0, 1);
     }
     glEnd();
+
+    drawBodies();
 }
 
 char handleEvents()
@@ -310,6 +417,36 @@ void controlView()
 
 int main ( int argc, char** argv )
 {
+    // Initialize world.
+
+    DYN_initialize(&world, 0.04);
+    {
+        DYN_Body body;
+        DYN_BodyStaticAttributes attributes;
+
+        double nullVector[3] = {0, 0, 0};
+        double identity[9] =
+        {
+            1, 0, 0,
+            0, 1, 0,
+            0, 0, 1
+        };
+
+        attributes.shape = DYN_CUBOID;
+        attributes.cuboidAttributes.width = 5;
+        attributes.cuboidAttributes.height = 10;
+        attributes.cuboidAttributes.depth = 15;
+
+        DYN_calculateMass(&attributes, 10);
+
+        memcpy(body.position, nullVector, sizeof(nullVector));
+        memcpy(body.velocity, nullVector, sizeof(nullVector));
+        memcpy(body.angularVelocity, nullVector, sizeof(nullVector));
+        memcpy(body.orientation, identity, sizeof(identity));
+
+        DYN_addBody(&world, &body, &attributes);
+        printf("X");
+    }
 
     // initialize SDL video
     if ( SDL_Init( SDL_INIT_VIDEO ) < 0 )
@@ -351,6 +488,7 @@ int main ( int argc, char** argv )
     {
         // message processing loop
 
+        DYN_stepWorld(&world);
         controlView();
         draw();
         usleep(40000);

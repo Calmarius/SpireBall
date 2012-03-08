@@ -5,6 +5,14 @@
 #include "dynamics.h"
 #include "algebra.h"
 
+const double DYN_IDENTITY[9] =
+{
+    1, 0, 0,
+    0, 1, 0,
+    0, 0, 1
+};
+
+
 /**
  * Computes the moment of intertia for the given axis.
  *
@@ -33,8 +41,15 @@ void updateRotation(DYN_Body *body)
     double axis[3];
 
     memcpy(axis, body->angularVelocity, sizeof(axis));
-    ALG_normalizeVector(axis);
-    ALG_createRotationMatrix(body->rotation, axis, angularSpeed);
+    if (ALG_isNullVector(axis))
+    {
+        memcpy(body->rotation, DYN_IDENTITY, sizeof(DYN_IDENTITY));
+    }
+    else
+    {
+        ALG_normalizeVector(axis);
+        ALG_createRotationMatrix(body->rotation, axis, angularSpeed);
+    }
 }
 
 /**
@@ -102,10 +117,11 @@ void moveBody(DYN_Context *context, DYN_Body *body)
     memcpy(body->orientation, newOrientation, sizeof(newOrientation));
 }
 
-void DYN_initialize(DYN_Context *context)
+void DYN_initialize(DYN_Context *context, double timeStep)
 {
     context->bodies = 0;
     context->bodiesAllocated = 0;
+    context->timeStep = timeStep;
 }
 
 void DYN_deinitialize(DYN_Context *context)
@@ -153,9 +169,37 @@ void DYN_addBody(
     }
     context->bodies[context->bodyCount] = *body;
     context->staticAttributes[context->bodyCount] = *attribs;
+    context->bodies[context->bodyCount].staticAttributes =
+        &context->staticAttributes[context->bodyCount];
+    updateRotation(&context->bodies[context->bodyCount]);
     context->bodyCount++;
 }
 
+void calculateCuboidMass(DYN_BodyStaticAttributes *attributes, double density)
+{
+    assert(attributes->shape == DYN_CUBOID);
+    double h = attributes->cuboidAttributes.height;
+    double w = attributes->cuboidAttributes.width;
+    double d = attributes->cuboidAttributes.depth;
+    double volume = h * w * d;
+    attributes->mass = volume * density;
+    memset(attributes->intertiaTensor, 0, sizeof(*attributes->intertiaTensor) * 9);
+    attributes->intertiaTensor[0] = 1.0/12.0 * attributes->mass * (h*h + d*d);
+    attributes->intertiaTensor[4] = 1.0/12.0 * attributes->mass * (w*w + d*d);
+    attributes->intertiaTensor[8] = 1.0/12.0 * attributes->mass * (h*h + w*w);
+}
+
+void DYN_calculateMass(DYN_BodyStaticAttributes *attributes, double density)
+{
+    switch (attributes->shape)
+    {
+        case DYN_CUBOID:
+            calculateCuboidMass(attributes, density);
+        break;
+        default:
+            assert(0); //< Unsupported shape
+    }
+}
 
 
 
