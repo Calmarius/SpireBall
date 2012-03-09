@@ -38,78 +38,45 @@ int mouseXRef, mouseYRef; // Reference mouse pos.
 int mouseXCurrent, mouseYCurrent;
 DYN_Context world;
 
+GLuint cubeModel;
+
+void convertDynMatrixToGLMatrix(const double *dynMatrix, double *oglMatrix)
+{
+    memset(oglMatrix, 0, sizeof(*oglMatrix) * 16);
+    oglMatrix[0] = dynMatrix[0];
+    oglMatrix[4] = dynMatrix[1];
+    oglMatrix[8] = dynMatrix[2];
+    oglMatrix[1] = dynMatrix[3];
+    oglMatrix[5] = dynMatrix[4];
+    oglMatrix[9] = dynMatrix[5];
+    oglMatrix[2] = dynMatrix[6];
+    oglMatrix[6] = dynMatrix[7];
+    oglMatrix[10] = dynMatrix[8];
+    oglMatrix[15] = 1;
+}
+
 void drawCuboid(const DYN_Body *body, const DYN_BodyStaticAttributes *attributes)
 {
-    // FIXME: do this with a display list!
-    double w = attributes->cuboidAttributes.width;
-    double h = attributes->cuboidAttributes.height;
-    double d = attributes->cuboidAttributes.depth;
-    double corners[8][3] =
-    {
-        {w, h, d},
-        {w, h, -d},
-        {w, -h, d},
-        {w, -h, -d},
-        {-w, h, d},
-        {-w, h, -d},
-        {-w, -h, d},
-        {-w, -h, -d}
-    };
-    double transformedCorners[8][3];
-    int i;
+    double lookMatrix[16];
+    double orientationMatrix[16];
 
-    glColor3f(1,1,1);
-    for (i = 0; i < 8; i++)
-    {
-        ALG_transform(transformedCorners[i], corners[i], body->orientation);
-    }
-    for (i = 0; i < 8; i++)
-    {
-        ALG_translate(transformedCorners[i], body->position);
-    }
-    glVertex3dv(transformedCorners[0]);
-    glVertex3dv(transformedCorners[1]);
-    glVertex3dv(transformedCorners[0]);
-    glVertex3dv(transformedCorners[2]);
-    glVertex3dv(transformedCorners[0]);
-    glVertex3dv(transformedCorners[4]);
-
-    glVertex3dv(transformedCorners[7]);
-    glVertex3dv(transformedCorners[6]);
-    glVertex3dv(transformedCorners[7]);
-    glVertex3dv(transformedCorners[5]);
-    glVertex3dv(transformedCorners[7]);
-    glVertex3dv(transformedCorners[3]);
-
-    glVertex3dv(transformedCorners[3]);
-    glVertex3dv(transformedCorners[2]);
-    glVertex3dv(transformedCorners[3]);
-    glVertex3dv(transformedCorners[1]);
-
-    glVertex3dv(transformedCorners[5]);
-    glVertex3dv(transformedCorners[1]);
-    glVertex3dv(transformedCorners[5]);
-    glVertex3dv(transformedCorners[4]);
-
-    glVertex3dv(transformedCorners[6]);
-    glVertex3dv(transformedCorners[2]);
-    glVertex3dv(transformedCorners[6]);
-    glVertex3dv(transformedCorners[4]);
-
-    glVertex3dv(transformedCorners[4]);
-    glVertex3dv(transformedCorners[5]);
-    glVertex3dv(transformedCorners[4]);
-    glVertex3dv(transformedCorners[6]);
-
-    glVertex3dv(transformedCorners[2]);
-    glVertex3dv(transformedCorners[6]);
-    glVertex3dv(transformedCorners[2]);
-    glVertex3dv(transformedCorners[3]);
-
-    glVertex3dv(transformedCorners[1]);
-    glVertex3dv(transformedCorners[5]);
-    glVertex3dv(transformedCorners[1]);
-    glVertex3dv(transformedCorners[3]);
+    glMatrixMode(GL_MODELVIEW);
+    glGetDoublev(GL_MODELVIEW_MATRIX, lookMatrix);
+    glPushMatrix();
+    // Do matrix multiplication in REVERSE order.
+    // tranlate
+    glTranslated(body->position[0], body->position[1], body->position[2]);
+    // rotate
+    convertDynMatrixToGLMatrix(body->orientation, orientationMatrix);
+    glMultMatrixd(orientationMatrix);
+    // Scale the cube
+    glScaled(
+        attributes->cuboidAttributes.width,
+        attributes->cuboidAttributes.height,
+        attributes->cuboidAttributes.depth
+    );
+    glCallList(cubeModel);
+    glPopMatrix();
 }
 
 void drawBody(const DYN_Body *body)
@@ -118,6 +85,7 @@ void drawBody(const DYN_Body *body)
     {
         case DYN_CUBOID:
         {
+            glColor3f(1,1,1);
             drawCuboid(body, body->staticAttributes);
         }
         break;
@@ -127,12 +95,10 @@ void drawBody(const DYN_Body *body)
 void drawBodies()
 {
     int i;
-    glBegin(GL_LINES);
     for (i = 0; i < world.bodyCount; i++)
     {
         drawBody(&world.bodies[i]);
     }
-    glEnd();
 }
 
 void draw()
@@ -415,6 +381,65 @@ void controlView()
 
 }
 
+void applyImpulse(
+    DYN_Context *context,
+    DYN_Body *body,
+    const double *pointOfForce,
+    const double *impulseVector
+);
+
+void createDisplayLists()
+{
+    cubeModel = glGenLists(1);
+    // Load cube model
+    glNewList(cubeModel, GL_COMPILE);
+        glBegin(GL_LINES);
+        {
+            // draw top face
+            glVertex3f(1, 1, 1);
+            glVertex3f(1, 1, -1);
+
+            glVertex3f(1, 1, 1);
+            glVertex3f(-1, 1, 1);
+
+            glVertex3f(-1, 1, -1);
+            glVertex3f(1, 1, -1);
+
+            glVertex3f(-1, 1, -1);
+            glVertex3f(-1, 1, 1);
+
+            // draw bottom face
+            glVertex3f(1, -1, 1);
+            glVertex3f(1, -1, -1);
+
+            glVertex3f(1, -1, 1);
+            glVertex3f(-1, -1, 1);
+
+            glVertex3f(-1, -1, -1);
+            glVertex3f(1, -1, -1);
+
+            glVertex3f(-1, -1, -1);
+            glVertex3f(-1, -1, 1);
+
+            // draw side faces
+            glVertex3f(1, 1, 1);
+            glVertex3f(1, -1, 1);
+
+            glVertex3f(-1, 1, 1);
+            glVertex3f(-1, -1, 1);
+
+            glVertex3f(-1, 1, -1);
+            glVertex3f(-1, -1, -1);
+
+            glVertex3f(1, 1, -1);
+            glVertex3f(1, -1, -1);
+
+        }
+        glEnd();
+    glEndList();
+
+}
+
 int main ( int argc, char** argv )
 {
     // Initialize world.
@@ -431,13 +456,15 @@ int main ( int argc, char** argv )
             0, 1, 0,
             0, 0, 1
         };
+        double impulse[3] = {30, 0, 0};
+        double pointOfImpulse[3] = {0, 0.4, 0};
 
         attributes.shape = DYN_CUBOID;
-        attributes.cuboidAttributes.width = 5;
-        attributes.cuboidAttributes.height = 10;
-        attributes.cuboidAttributes.depth = 15;
+        attributes.cuboidAttributes.width = 1;
+        attributes.cuboidAttributes.height = 2;
+        attributes.cuboidAttributes.depth = 3;
 
-        DYN_calculateMass(&attributes, 10);
+        DYN_calculateMass(&attributes, 3);
 
         memcpy(body.position, nullVector, sizeof(nullVector));
         memcpy(body.velocity, nullVector, sizeof(nullVector));
@@ -445,6 +472,9 @@ int main ( int argc, char** argv )
         memcpy(body.orientation, identity, sizeof(identity));
 
         DYN_addBody(&world, &body, &attributes);
+
+        applyImpulse(&world, &world.bodies[0], pointOfImpulse, impulse);
+
         printf("X");
     }
 
@@ -466,6 +496,10 @@ int main ( int argc, char** argv )
     // create a new window
     SDL_Surface* screen = SDL_SetVideoMode(1024, 768, 16,
                                            SDL_HWSURFACE | SDL_OPENGL);
+
+    // Create display lists
+
+    createDisplayLists();
 
     // Initialize modes
 
