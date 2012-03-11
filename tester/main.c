@@ -57,13 +57,12 @@ void convertDynMatrixToGLMatrix(const double *dynMatrix, double *oglMatrix)
 
 void drawCuboid(const DYN_Body *body, const DYN_BodyStaticAttributes *attributes)
 {
-    double lookMatrix[16];
     double orientationMatrix[16];
 
     glMatrixMode(GL_MODELVIEW);
-    glGetDoublev(GL_MODELVIEW_MATRIX, lookMatrix);
     glPushMatrix();
-    // Do matrix multiplication in REVERSE order.
+    // Do matrix calculate transformation matrix.
+    // Transformations are done in reverse order.
     // tranlate
     glTranslated(body->position[0], body->position[1], body->position[2]);
     // rotate
@@ -71,9 +70,9 @@ void drawCuboid(const DYN_Body *body, const DYN_BodyStaticAttributes *attributes
     glMultMatrixd(orientationMatrix);
     // Scale the cube
     glScaled(
-        attributes->cuboidAttributes.width,
-        attributes->cuboidAttributes.height,
-        attributes->cuboidAttributes.depth
+        attributes->cuboidAttributes.width * 0.5,
+        attributes->cuboidAttributes.height * 0.5,
+        attributes->cuboidAttributes.depth * 0.5
     );
     glCallList(cubeModel);
     glPopMatrix();
@@ -101,28 +100,10 @@ void drawBodies()
     }
 }
 
-void draw()
+void drawAxes()
 {
-    // Setting camera
-
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
-    gluLookAt(
-        camPosition[0],
-        camPosition[1],
-        camPosition[2],
-        camPosition[0] - camOrientation[2],
-        camPosition[1] - camOrientation[5],
-        camPosition[2] - camOrientation[8],
-        camOrientation[1],
-        camOrientation[4],
-        camOrientation[7]
-    );
-
-    // Drawing
-    glClearColor(0, 0, 0.5f, 1);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
+    glPushAttrib(GL_ENABLE_BIT);
+    glDisable(GL_LIGHTING);
     glBegin(GL_LINES);
     {
         glColor3f(0, 0, 0);
@@ -141,7 +122,91 @@ void draw()
         glVertex3f(0, 0, 1);
     }
     glEnd();
+    glPopAttrib();
+}
 
+void drawGrid()
+{
+    glPushAttrib(GL_ENABLE_BIT);
+    glDisable(GL_LIGHTING);
+    glDisable(GL_TEXTURE_2D);
+    glColor3f(0.0, 0.3, 0.0);
+    glLineWidth(1);
+    glBegin(GL_LINES);
+    {
+        int i;
+        for (i = -50; i < 50; i++)
+        {
+            if (i % 5 == 0)
+            {
+                continue;
+            }
+            glVertex3f(i, 0, -50);
+            glVertex3f(i, 0, 50);
+            glVertex3f(-50, 0, i);
+            glVertex3f(50, 0, i);
+        }
+    }
+    glEnd();
+    glLineWidth(3);
+    glBegin(GL_LINES);
+    {
+        int i;
+        for (i = -50; i < 50; i+=5)
+        {
+            if (!i)
+            {
+                continue;
+            }
+            glVertex3f(i, 0, -50);
+            glVertex3f(i, 0, 50);
+            glVertex3f(-50, 0, i);
+            glVertex3f(50, 0, i);
+        }
+    }
+    glEnd();
+    glLineWidth(5);
+    glBegin(GL_LINES);
+    {
+        glVertex3f(0, 0, -50);
+        glVertex3f(0, 0, 50);
+        glVertex3f(-50, 0, 0);
+        glVertex3f(50, 0, 0);
+    }
+    glEnd();
+    glPopAttrib();
+}
+
+void draw()
+{
+    GLfloat position[4] = {1, 1, 1, 0};
+
+    // Setting camera
+
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    gluLookAt(
+        camPosition[0],
+        camPosition[1],
+        camPosition[2],
+        camPosition[0] - camOrientation[2],
+        camPosition[1] - camOrientation[5],
+        camPosition[2] - camOrientation[8],
+        camOrientation[1],
+        camOrientation[4],
+        camOrientation[7]
+    );
+
+    // Setting light position
+
+    glLightfv(GL_LIGHT0, GL_POSITION, position);
+
+    // Drawing
+    glClearColor(0, 0, 0.0f, 1);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    drawAxes();
+    drawGrid();
     drawBodies();
 }
 
@@ -393,47 +458,45 @@ void createDisplayLists()
     cubeModel = glGenLists(1);
     // Load cube model
     glNewList(cubeModel, GL_COMPILE);
-        glBegin(GL_LINES);
+        glBegin(GL_QUADS);
         {
-            // draw top face
+            glColor3f(1,1,1);
+            // Draw top face
+            glNormal3f(0, 1, 0);
             glVertex3f(1, 1, 1);
             glVertex3f(1, 1, -1);
-
-            glVertex3f(1, 1, 1);
-            glVertex3f(-1, 1, 1);
-
-            glVertex3f(-1, 1, -1);
-            glVertex3f(1, 1, -1);
-
             glVertex3f(-1, 1, -1);
             glVertex3f(-1, 1, 1);
-
-            // draw bottom face
-            glVertex3f(1, -1, 1);
-            glVertex3f(1, -1, -1);
-
+            // Draw bottom face
+            glNormal3f(0, -1, 0);
             glVertex3f(1, -1, 1);
             glVertex3f(-1, -1, 1);
-
             glVertex3f(-1, -1, -1);
             glVertex3f(1, -1, -1);
-
+            // Draw left side face
+            glNormal3f(-1, 0, 0);
+            glVertex3f(-1, 1, 1);
+            glVertex3f(-1, 1, -1);
             glVertex3f(-1, -1, -1);
             glVertex3f(-1, -1, 1);
-
-            // draw side faces
+            // Draw right side face
+            glNormal3f(1, 0, 0);
             glVertex3f(1, 1, 1);
             glVertex3f(1, -1, 1);
-
-            glVertex3f(-1, 1, 1);
-            glVertex3f(-1, -1, 1);
-
-            glVertex3f(-1, 1, -1);
-            glVertex3f(-1, -1, -1);
-
+            glVertex3f(1, -1, -1);
+            glVertex3f(1, 1, -1);
+            // Draw front side face
+            glNormal3f(0, 0, -1);
             glVertex3f(1, 1, -1);
             glVertex3f(1, -1, -1);
-
+            glVertex3f(-1, -1, -1);
+            glVertex3f(-1, 1, -1);
+            // Draw back side face
+            glNormal3f(0, 0, 1);
+            glVertex3f(1, 1, 1);
+            glVertex3f(-1, 1, 1);
+            glVertex3f(-1, -1, 1);
+            glVertex3f(1, -1, 1);
         }
         glEnd();
     glEndList();
@@ -456,8 +519,9 @@ int main ( int argc, char** argv )
             0, 1, 0,
             0, 0, 1
         };
-        double impulse[3] = {30, 0, 0};
-        double pointOfImpulse[3] = {0, 0.4, 0};
+
+//        double impulse[3] = {100, 0, 0};
+//        double pointOfImpulse[3] = {0, 1, 1};
 
         attributes.shape = DYN_CUBOID;
         attributes.cuboidAttributes.width = 1;
@@ -473,9 +537,13 @@ int main ( int argc, char** argv )
 
         DYN_addBody(&world, &body, &attributes);
 
-        applyImpulse(&world, &world.bodies[0], pointOfImpulse, impulse);
+        //applyImpulse(&world, &world.bodies[0], pointOfImpulse, impulse);
 
-        printf("X");
+        body.position[0] = 5;
+        body.position[1] = 5;
+        body.position[2] = 5;
+
+        DYN_addBody(&world, &body, &attributes);
     }
 
     // initialize SDL video
@@ -504,12 +572,37 @@ int main ( int argc, char** argv )
     // Initialize modes
 
     glEnable(GL_DEPTH_TEST);
+    glEnable(GL_COLOR_MATERIAL);
 
     // Initialize gl matrixes
 
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
     gluPerspective(60, 4.0/3.0, 1, 100000.0);
+
+    // Initlalize GL lights
+
+    {
+        GLfloat ambient[4] = {0.1, 0.1, 0.1, 1};
+
+        GLfloat diffuseColor[4] = {1, 1, 1, 1};
+        GLfloat specularColor[4] = {0,0,0,0};
+
+        glEnable(GL_LIGHTING);
+        glEnable(GL_CULL_FACE);
+        glEnable(GL_LIGHT0);
+
+        glLightModelfv(GL_LIGHT_MODEL_AMBIENT, ambient);
+
+        glMatrixMode(GL_MODELVIEW);
+
+        glLightfv(GL_LIGHT0, GL_DIFFUSE, diffuseColor);
+        glLightfv(GL_LIGHT0, GL_AMBIENT, ambient);
+        glLightfv(GL_LIGHT0, GL_SPECULAR, specularColor);
+        glLightf(GL_LIGHT0, GL_QUADRATIC_ATTENUATION, 0);
+
+    }
+
 
     if ( !screen )
     {

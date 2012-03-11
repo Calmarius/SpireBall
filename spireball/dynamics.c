@@ -169,15 +169,24 @@ void DYN_addBody(
     }
     context->bodies[context->bodyCount] = *body;
     context->staticAttributes[context->bodyCount] = *attribs;
-    context->bodies[context->bodyCount].staticAttributes =
-        &context->staticAttributes[context->bodyCount];
+    {
+        DYN_Body *body = &context->bodies[context->bodyCount];
+        body->staticAttributes = &context->staticAttributes[context->bodyCount];
+        body->colliding = 0;
+    }
     updateRotation(&context->bodies[context->bodyCount]);
     context->bodyCount++;
 }
 
+/**
+ * Calculates the mass and inertia tensor of a cuboid.
+ *
+ * @param [in,out] attributes The preset attributes with the shape of the cuboid.
+ * @param [in] denstiry The density of the cuboid
+ */
 void calculateCuboidMass(DYN_BodyStaticAttributes *attributes, double density)
 {
-    assert(attributes->shape == DYN_CUBOID);
+    assert(attributes->shape == DYN_BS_CUBOID);
     double h = attributes->cuboidAttributes.height;
     double w = attributes->cuboidAttributes.width;
     double d = attributes->cuboidAttributes.depth;
@@ -193,7 +202,7 @@ void DYN_calculateMass(DYN_BodyStaticAttributes *attributes, double density)
 {
     switch (attributes->shape)
     {
-        case DYN_CUBOID:
+        case DYN_BS_CUBOID:
             calculateCuboidMass(attributes, density);
         break;
         default:

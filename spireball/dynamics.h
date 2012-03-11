@@ -6,7 +6,7 @@
  */
 typedef enum DYN_Shape
 {
-    DYN_CUBOID ///< A cuboid
+    DYN_BS_CUBOID ///< A cuboid
 } DYN_Shape;
 /**
  * Represents the static attributes of a body.
@@ -52,6 +52,10 @@ typedef struct DYN_Body
      * Pointer to the static attributes of the body.
      */
     DYN_BodyStaticAttributes *staticAttributes;
+    /**
+     * Nonzero when the body is colliding with something.
+     */
+    char colliding;
 } DYN_Body;
 
 /**
