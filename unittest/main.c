@@ -69,6 +69,179 @@ typedef struct AlgebraRotationTestCase
     double expected[9];
 } AlgebraRotationTestCase;
 
+int isPointInTetraHedron(const double *point,const double *tetrahedron);
+
+typedef struct CollisionPointInTetraHedronTestCase
+{
+    double tetrahedron[12];
+    double point[3];
+    int expected; // Zero or nonzero.
+} CollisionPointInTetraHedronTestCase;
+
+int getSupportVectorOfTriangle(const double *triangle, double *supportVector);
+
+typedef struct CollisionTriangleSupportVectorTestCase
+{
+    double triangle[9];
+    double expectedVector[3];
+    int expectedReturn;
+} CollisionTriangleSupportVectorTestCase;
+
+int getSupportVectorOfLineSegment(const double *endPoints, double *supportVector);
+
+typedef struct CollisionLineSegmentSupportTestCase
+{
+    double lineSegment[6];
+    double expectedVector[3];
+    int expectedReturn;
+} CollisionLineSegmentSupportTestCase;
+
+CollisionLineSegmentSupportTestCase lineSegmentSupportVectorTests[] =
+{
+    {
+        {
+            -1, 5, 0,
+            -1, -5, 0
+        },
+        {
+            1, 0, 0
+        },
+        1
+    },
+    {
+        {
+            -1, 5, 10,
+            -1, -5, -10
+        },
+        {
+            1, 0, 0
+        },
+        1
+    },
+    {
+        {
+            -5, -3, 0,
+            3, 5, 0
+        },
+        {
+            1, -1, 0
+        },
+        1
+    },
+    {
+        {
+            -1, 15, 0,
+            -1, 5, 0
+        },
+        {
+            1, 0, 0
+        },
+        0
+    }
+};
+
+CollisionTriangleSupportVectorTestCase triangleSupportVectorTests[] =
+{
+    {
+        {
+            -1, -1, 5,
+            -3, 1, -5,
+            1, -3, -5
+        },
+        {
+            1, 1, 0
+        },
+        1
+    },
+    {
+        {
+            -1, 1, 5,
+            -3, -1, -5,
+            1, 3, -5
+        },
+        {
+            1, -1, 0
+        },
+        1
+    },
+    {
+        {
+            -1, 1, 5,
+            -1, -1, -5,
+            -1, 3, -5
+        },
+        {
+            1, 0, 0
+        },
+        1
+    },
+    {
+        {
+            -1, 11, 5,
+            -1, 9, -5,
+            -1, 13, -5
+        },
+        {
+            1, 0, 0
+        },
+        0
+    }
+};
+
+CollisionPointInTetraHedronTestCase pointInTetraHedronTests[] =
+{
+    {
+        {
+            0, 5, 0,
+            0, 0, -5,
+            -5, 0, 5,
+            5, 0, 5
+        },
+        {
+            0, 1, 0
+        },
+        1
+    },
+    {
+        {
+            0, 5, 0,
+            0, 0, 5,
+            -5, 0, 5,
+            5, 0, 5
+        },
+        {
+            0, -0.1, 0
+        },
+        0
+    },
+    {
+        {
+            0, 5, 0,
+            0, 0, 5,
+            -5, 0, 5,
+            5, 0, 5
+        },
+        {
+            0, 6, 0
+        },
+        0
+    },
+    {
+        {
+            0, 5, 0,
+            0, 0, 5,
+            -5, 0, 5,
+            5, 0, 5
+        },
+        {
+            0, 0, 6
+        },
+        0
+    }
+};
+
+
+
 AlgebraRotationTestCase rotationTests[] =
 {
     {
@@ -372,7 +545,7 @@ void dumpMatrix(const double *M)
 
 void dumpVector(const double *v)
 {
-    printf("%10g%10g%10g\n", v[0], v[1], v[2]);
+    printf("%15g%15g%15g\n", v[0], v[1], v[2]);
 }
 
 void runMatrixMultiplicationTests()
@@ -678,6 +851,148 @@ void runRotationTests()
         if (passed) printf("Rotation test #%d passed.\n", i + 1);
     }
 }
+
+void runTriangleSupportVectorTests()
+{
+    int N = sizeof (triangleSupportVectorTests) / sizeof (triangleSupportVectorTests[0]);
+    int i;
+
+    for (i = 0; i < N; i++)
+    {
+        CollisionTriangleSupportVectorTestCase *current = &triangleSupportVectorTests[i];
+        int j;
+        char passed = 1;
+        double result[3];
+        int retVal;
+
+        retVal = getSupportVectorOfTriangle(current->triangle, result);
+
+        if (!!retVal != !!current->expectedReturn)
+        {
+            passed = 0;
+        }
+        else
+        {
+            if (retVal)
+            {
+                for (j = 0; j < 3; j++)
+                {
+                    if (fabs(result[j] - current->expectedVector[j]) > 1e-9)
+                    {
+                        passed = 0;
+                        break;
+                    }
+                }
+            }
+        }
+        // check
+        if (!passed)
+        {
+            printf("Triangle support vector test #%d FAILED!\n", i + 1);
+            printf("Triangle:\n");
+            dumpVector(&current->triangle[0]);
+            dumpVector(&current->triangle[3]);
+            dumpVector(&current->triangle[6]);
+            printf("Expected vector: \n");
+            dumpVector(current->expectedVector);
+            printf("Expected return: %d \n", !!current->expectedReturn);
+            printf("Result vector: \n");
+            dumpVector(result);
+            printf("Actual return: %d \n", !!retVal);
+        }
+        else
+        {
+            printf("Triangle support vector test #%d passed.\n", i + 1);
+        }
+    }
+}
+
+void runPointInTetrahedronTests()
+{
+    int N = sizeof (pointInTetraHedronTests) / sizeof (pointInTetraHedronTests[0]);
+    int i;
+
+    for (i = 0; i < N; i++)
+    {
+        CollisionPointInTetraHedronTestCase *current = &pointInTetraHedronTests[i];
+        char passed = 1;
+        int result;
+
+        result = isPointInTetraHedron(current->point, current->tetrahedron);
+
+        // check
+        if (!!result != !!current->expected)
+        {
+            printf("Point in tetrahedron test #%d FAILED!\n", i + 1);
+            printf("Point:\n");
+            dumpVector(current->point);
+            printf("Point:\n");
+            dumpVector(&current->tetrahedron[0]);
+            dumpVector(&current->tetrahedron[3]);
+            dumpVector(&current->tetrahedron[6]);
+            dumpVector(&current->tetrahedron[9]);
+            printf("Expected: %d\n", current->expected);
+            printf("Result: %d\n", result);
+            passed = 0;
+        }
+        if (passed) printf("Point in tetrahedrontest #%d passed.\n", i + 1);
+    }
+}
+
+void runLineSegmentSupportVectorTests()
+{
+    int N = sizeof (lineSegmentSupportVectorTests) / sizeof (lineSegmentSupportVectorTests[0]);
+    int i;
+
+    for (i = 0; i < N; i++)
+    {
+        CollisionLineSegmentSupportTestCase *current = &lineSegmentSupportVectorTests[i];
+        int j;
+        char passed = 1;
+        double result[3];
+        int retVal;
+
+        retVal = getSupportVectorOfLineSegment(current->lineSegment, result);
+
+        if (!!retVal != !!current->expectedReturn)
+        {
+            passed = 0;
+        }
+        else
+        {
+            if (retVal)
+            {
+                for (j = 0; j < 3; j++)
+                {
+                    if (fabs(result[j] - current->expectedVector[j]) > 1e-9)
+                    {
+                        passed = 0;
+                        break;
+                    }
+                }
+            }
+        }
+        // check
+        if (!passed)
+        {
+            printf("Line segment support vector test #%d FAILED!\n", i + 1);
+            printf("Line segment endpoints:\n");
+            dumpVector(&current->lineSegment[0]);
+            dumpVector(&current->lineSegment[3]);
+            printf("Expected vector: \n");
+            dumpVector(current->expectedVector);
+            printf("Expected return: %d \n", !!current->expectedReturn);
+            printf("Result vector: \n");
+            dumpVector(result);
+            printf("Actual return: %d \n", !!retVal);
+        }
+        else
+        {
+            printf("Line segment support vector test #%d passed.\n", i + 1);
+        }
+    }
+}
+
 //
 int main()
 {
@@ -699,6 +1014,12 @@ int main()
     runTransposeTests();
     printf("Running transpose tests:\n");
     runRotationTests();
+    printf("Running point in tetrahedron tests:\n");
+    runPointInTetrahedronTests();
+    printf("Triangle support vector tests:\n");
+    runTriangleSupportVectorTests();
+    printf("Line segment support vector tests:\n");
+    runLineSegmentSupportVectorTests();
     printf("Testing finished.\n");
     fgetc(stdin);
     return 0;

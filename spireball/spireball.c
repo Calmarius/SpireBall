@@ -14,6 +14,7 @@
         - Dynamics part
             - Code the calculations when force acts on the body.
         - Collision detection part.
+            - Do convex body collision.
             - When does two trimeshes collide?
         - Optimize calculations
             - How to handle many objects.
@@ -21,7 +22,7 @@
                 - Narrow phase collision detection.
                 - Prefer continuous collision detection.
     - Write network code.
-- Visualization tool.
+ - Visualization tool.
  - Make a test program for the library.
  - Create the game UI
  - Artwork

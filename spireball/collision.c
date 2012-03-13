@@ -74,7 +74,6 @@ int getSupportVectorOfTriangle(const double *triangle, double *supportVector)
     int i, j;
     double coefficients[3]; //< Solution of the Mx = b. Where M is the matrix, -b is the first vertex of the triangle.
     double rightSide[3]; //< right side of the vector equation.
-    double tmp[3];
 
     // calculate the side vectors
     for (i = 0, j = 0; i < 6; i++, j++)
@@ -84,6 +83,7 @@ int getSupportVectorOfTriangle(const double *triangle, double *supportVector)
     }
     // calculate the prependicular vector.
     ALG_crossProduct(&matrix[6], &matrix[0], &matrix[3]);
+    memcpy(supportVector, &matrix[6], sizeof(*supportVector) * 3);
     // Turn the row vectors into column vectors.
     ALG_transposeMatrix(matrix);
     // Calculate the right side.
@@ -108,14 +108,7 @@ int getSupportVectorOfTriangle(const double *triangle, double *supportVector)
         return 0;
     }
     // calculate the support vector
-    memcpy(supportVector, triangle, sizeof(*supportVector) * 3); // A
-    memcpy(tmp, &matrix[0], sizeof(tmp));
-    ALG_scale(tmp, coefficients[0]);
-    ALG_translate(supportVector, tmp);  // A + ku
-    memcpy(tmp, &matrix[0], sizeof(tmp));
-    ALG_scale(tmp, coefficients[1]);
-    ALG_translate(supportVector, tmp); // A + ku + lv
-    ALG_scale(supportVector, -1); // make it point to the origin.
+    ALG_scale(supportVector, coefficients[2]);
     return 1;
 }
 
@@ -142,13 +135,13 @@ int getSupportVectorOfLineSegment(const double *endPoints, double *supportVector
         return 0;
     }
 
-    k = ALG_dotProduct(endPoints, dirVector) / dirSquare;
+    k = -ALG_dotProduct(endPoints, dirVector) / dirSquare;
     if ((k < 0) || (k > 1))
     {
         // support point is outside the segment.
         return 0;
     }
-    memcpy(supportVector, endPoints, sizeof(*supportVector) + 3); // A
+    memcpy(supportVector, endPoints, sizeof(*supportVector) * 3); // A
     ALG_scale(dirVector, k); // calculate kv
     ALG_translate(supportVector, dirVector); // calculate A + kv
     ALG_scale(supportVector, -1); // negate it.
@@ -164,12 +157,16 @@ int getSupportVectorOfLineSegment(const double *endPoints, double *supportVector
  *      calculation several vertices may be removed from the array which does not
  *      contribute to the support point (see GJK algorithm)
  * @param [in,out] vertexCount Count of the vertices in the simplex. This value may change.
+ * @param [in,out] supportVector The support vector will be stored here.
+ *      (The user must provide an array to store 3 elements.)
  *
  * @retval Nonzero if the simplex contains the origin.
  * @retval Zero otherwise.
  */
-int getSupportVectorOfSymplex(double *simplexVertices, double *vertexCount)
+int getSupportVectorOfSymplex(double *simplexVertices, double *vertexCount, double *supportVector)
 {
+    assert(*vertexCount <= 4);
+    assert(*vertexCount >= 1);
     return 0;
 }
 
