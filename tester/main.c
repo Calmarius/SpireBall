@@ -33,10 +33,18 @@ struct
     char bankLeft;
     char bankRight;
 } movement = {0};
-char mouseGrabbed = 0;
-int mouseXRef, mouseYRef; // Reference mouse pos.
-int mouseXCurrent, mouseYCurrent;
+
+void applyImpulse(
+    DYN_Context *context,
+    DYN_Body *body,
+    const double *pointOfForce,
+    const double *impulseVector
+);
+
+int mouseRelX, mouseRelY;
 DYN_Context world;
+const int RESOLUTION_X = 1024;
+const int RESOLUTION_Y = 768;
 
 GLuint cubeModel;
 
@@ -80,11 +88,47 @@ void drawCuboid(const DYN_Body *body, const DYN_BodyStaticAttributes *attributes
 
 void drawBody(const DYN_Body *body)
 {
+    const double LINEAR_VELOCITY_SCALE_FACTOR = 50;
+    const double ANGULAR_VELOCITY_SCALE_FACTOR = 50;
+    // graw velocity and angular momentum
+    glBegin(GL_LINES);
+    {
+        glColor3f(1, 0.5, 0);
+        glVertex3f(
+            body->position[0],
+            body->position[1],
+            body->position[2]
+        );
+        glVertex3f(
+            body->position[0] + body->velocity[0] * LINEAR_VELOCITY_SCALE_FACTOR,
+            body->position[1] + body->velocity[1] * LINEAR_VELOCITY_SCALE_FACTOR,
+            body->position[2] + body->velocity[2] * LINEAR_VELOCITY_SCALE_FACTOR
+        );
+        glColor3f(0, 0.5, 1);
+        glVertex3f(
+            body->position[0],
+            body->position[1],
+            body->position[2]
+        );
+        glVertex3f(
+            body->position[0] + body->angularVelocity[0] * ANGULAR_VELOCITY_SCALE_FACTOR,
+            body->position[1] + body->angularVelocity[1] * ANGULAR_VELOCITY_SCALE_FACTOR,
+            body->position[2] + body->angularVelocity[2] * ANGULAR_VELOCITY_SCALE_FACTOR
+        );
+    }
+    glEnd();
+    if (body->colliding)
+    {
+        glColor3f(1, 0, 0);
+    }
+    else
+    {
+        glColor3f(0, 1, 0);
+    }
     switch (body->staticAttributes->shape)
     {
-        case DYN_CUBOID:
+        case DYN_BS_CUBOID:
         {
-            glColor3f(1,1,1);
             drawCuboid(body, body->staticAttributes);
         }
         break;
@@ -109,17 +153,17 @@ void drawAxes()
         glColor3f(0, 0, 0);
         glVertex3f(0, 0, 0);
         glColor3f(1, 0, 0);
-        glVertex3f(1, 0, 0);
+        glVertex3f(10, 0, 0);
 
         glColor3f(0, 0, 0);
         glVertex3f(0, 0, 0);
         glColor3f(0, 1, 0);
-        glVertex3f(0, 1, 0);
+        glVertex3f(0, 10, 0);
 
         glColor3f(0, 0, 0);
         glVertex3f(0, 0, 0);
         glColor3f(0, 0, 1);
-        glVertex3f(0, 0, 1);
+        glVertex3f(0, 0, 10);
     }
     glEnd();
     glPopAttrib();
@@ -177,14 +221,43 @@ void drawGrid()
     glPopAttrib();
 }
 
+void draw2D()
+{
+    glBegin(GL_LINES);
+    {
+        glVertex2f(-0.03, 0);
+        glVertex2f(0.03, 0);
+        glVertex2f(0, -0.04);
+        glVertex2f(0, 0.04);
+    }
+    glEnd();
+}
+
 void draw()
 {
     GLfloat position[4] = {1, 1, 1, 0};
+
+    // Clearing
+    glClearColor(0, 0, 0.0f, 1);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     // Setting camera
 
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    // Draw crosshair before lookat
+    glLineWidth(1);
+    glPushAttrib(GL_ENABLE_BIT);
+    glDisable(GL_LIGHTING);
+    draw2D();
+    glPopMatrix();
+    glPopAttrib();
+
+    glMatrixMode(GL_MODELVIEW);
+
     gluLookAt(
         camPosition[0],
         camPosition[1],
@@ -202,12 +275,56 @@ void draw()
     glLightfv(GL_LIGHT0, GL_POSITION, position);
 
     // Drawing
-    glClearColor(0, 0, 0.0f, 1);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     drawAxes();
     drawGrid();
     drawBodies();
+}
+
+void shotRay()
+{
+    int i;
+    double forwardVector[3] =
+    {
+        -camOrientation[2],
+        -camOrientation[5],
+        -camOrientation[8]
+    };
+    double shortest;
+    int rayFound = 0;
+    double currentRayLength;
+    int bodyIndex = -1;
+
+    for (i = 0; i < world.bodyCount; i++)
+    {
+        if (DYN_castRay(
+            &world.bodies[i],
+            camPosition,
+            forwardVector,
+            &currentRayLength
+        ))
+        {
+            if (rayFound)
+            {
+                if (currentRayLength < shortest)
+                {
+                    shortest = currentRayLength;
+                    bodyIndex = i;
+                }
+            }
+            else
+            {
+                rayFound = 1;
+                shortest = currentRayLength;
+                bodyIndex = i;
+            }
+        }
+    }
+    if (bodyIndex >= 0)
+    {
+        ALG_scale(forwardVector, 20);
+        applyImpulse(&world, &world.bodies[bodyIndex], camPosition, forwardVector);
+    }
 }
 
 char handleEvents()
@@ -237,8 +354,8 @@ char handleEvents()
                     case SDLK_d: movement.moveRight = 1; break;
                     case SDLK_w: movement.moveForward = 1; break;
                     case SDLK_s: movement.moveBackward = 1; break;
-                    case SDLK_e: movement.moveUp = 1; break;
-                    case SDLK_q: movement.moveDown = 1; break;
+                    case SDLK_r: movement.moveUp = 1; break;
+                    case SDLK_f: movement.moveDown = 1; break;
                     case SDLK_LALT: movement.bankLeft = 1; break;
                     case SDLK_SPACE: movement.bankRight = 1; break;
                     case SDLK_LEFT: movement.turnLeft = 1; break;
@@ -257,8 +374,8 @@ char handleEvents()
                     case SDLK_d: movement.moveRight = 0; break;
                     case SDLK_w: movement.moveForward = 0; break;
                     case SDLK_s: movement.moveBackward = 0; break;
-                    case SDLK_e: movement.moveUp = 0; break;
-                    case SDLK_q: movement.moveDown = 0; break;
+                    case SDLK_r: movement.moveUp = 0; break;
+                    case SDLK_f: movement.moveDown = 0; break;
                     case SDLK_LALT: movement.bankLeft = 0; break;
                     case SDLK_SPACE: movement.bankRight = 0; break;
                     case SDLK_LEFT: movement.turnLeft = 0; break;
@@ -270,23 +387,17 @@ char handleEvents()
             }
         break;
         case SDL_MOUSEBUTTONDOWN:
+        {
             if (event.button.button == SDL_BUTTON_LEFT)
             {
-                mouseGrabbed = 1;
-                mouseXCurrent = mouseXRef = event.button.x;
-                mouseYCurrent = mouseYRef = event.button.y;
+                shotRay();
             }
-        break;
-        case SDL_MOUSEBUTTONUP:
-            if (event.button.button == SDL_BUTTON_LEFT)
-            {
-                mouseGrabbed = 0;
-            }
+        }
         break;
         case SDL_MOUSEMOTION:
         {
-            mouseXCurrent = event.motion.x;
-            mouseYCurrent = event.motion.y;
+            mouseRelX = event.motion.xrel;
+            mouseRelY = event.motion.yrel;
         }
         break;
         } // end switch
@@ -302,7 +413,7 @@ void controlView()
 
     const double MOVEMENT_FACTOR = 0.5;
     const double TURN_FACTOR = 0.1;
-    const double MOUSE_TURN_FACTOR = 0.03;
+    const double MOUSE_TURN_FACTOR = 0.05;
     // Tranlations
     if (movement.moveLeft)
     {
@@ -409,10 +520,9 @@ void controlView()
     }
 
     // Mouse things
-    if (mouseGrabbed)
     {
-        double dx = mouseXCurrent - mouseXRef;
-        double dy = mouseYCurrent - mouseYRef;
+        double dx = mouseRelX;
+        double dy = mouseRelY;
 
         tmp[0] = -camOrientation[1] * MOUSE_TURN_FACTOR * dx;
         tmp[1] = -camOrientation[4] * MOUSE_TURN_FACTOR * dx;
@@ -428,8 +538,7 @@ void controlView()
         ALG_multiplyMatrix(newOrientation, tmpMatrix, camOrientation);
         memcpy(camOrientation, newOrientation, sizeof(newOrientation));
 
-        mouseXRef = mouseXCurrent;
-        mouseYRef = mouseYCurrent;
+        mouseRelX = mouseRelY = 0;
     }
     // orthogonalize and normalize the orientation matrix
     ALG_transposeMatrix(camOrientation); //< Turn the column vector of the matrix into row vectors.
@@ -446,13 +555,6 @@ void controlView()
 
 }
 
-void applyImpulse(
-    DYN_Context *context,
-    DYN_Body *body,
-    const double *pointOfForce,
-    const double *impulseVector
-);
-
 void createDisplayLists()
 {
     cubeModel = glGenLists(1);
@@ -460,7 +562,6 @@ void createDisplayLists()
     glNewList(cubeModel, GL_COMPILE);
         glBegin(GL_QUADS);
         {
-            glColor3f(1,1,1);
             // Draw top face
             glNormal3f(0, 1, 0);
             glVertex3f(1, 1, 1);
@@ -507,7 +608,7 @@ int main ( int argc, char** argv )
 {
     // Initialize world.
 
-    DYN_initialize(&world, 0.04);
+    DYN_initialize(&world, 0.02);
     {
         DYN_Body body;
         DYN_BodyStaticAttributes attributes;
@@ -523,12 +624,12 @@ int main ( int argc, char** argv )
 //        double impulse[3] = {100, 0, 0};
 //        double pointOfImpulse[3] = {0, 1, 1};
 
-        attributes.shape = DYN_CUBOID;
-        attributes.cuboidAttributes.width = 1;
-        attributes.cuboidAttributes.height = 2;
+        attributes.shape = DYN_BS_CUBOID;
+        attributes.cuboidAttributes.width = 3;
+        attributes.cuboidAttributes.height = 3;
         attributes.cuboidAttributes.depth = 3;
 
-        DYN_calculateMass(&attributes, 3);
+        DYN_calculateMass(&attributes, 1);
 
         memcpy(body.position, nullVector, sizeof(nullVector));
         memcpy(body.velocity, nullVector, sizeof(nullVector));
@@ -539,11 +640,22 @@ int main ( int argc, char** argv )
 
         //applyImpulse(&world, &world.bodies[0], pointOfImpulse, impulse);
 
-        body.position[0] = 5;
-        body.position[1] = 5;
-        body.position[2] = 5;
-
-        DYN_addBody(&world, &body, &attributes);
+        {
+            int i,j,k;
+            for (i = 0; i < 3; i++)
+            {
+                for (j = 0; j < 3; j++)
+                {
+                    for (k = 0; k < 3; k++)
+                    {
+                        body.position[0] = 10 + 5*i;
+                        body.position[1] = 10 + 5*j;
+                        body.position[2] = 10 + 5*k;
+                        DYN_addBody(&world, &body, &attributes);
+                    }
+                }
+            }
+        }
     }
 
     // initialize SDL video
@@ -562,8 +674,13 @@ int main ( int argc, char** argv )
     SDL_GL_SetAttribute( SDL_GL_DOUBLEBUFFER, 1 );
 
     // create a new window
-    SDL_Surface* screen = SDL_SetVideoMode(1024, 768, 16,
+    SDL_Surface* screen = SDL_SetVideoMode(RESOLUTION_X, RESOLUTION_Y, 16,
                                            SDL_HWSURFACE | SDL_OPENGL);
+
+    // Lock mouse in
+
+    SDL_ShowCursor(0);
+    SDL_WM_GrabInput(SDL_GRAB_ON);
 
     // Create display lists
 
@@ -618,7 +735,7 @@ int main ( int argc, char** argv )
         DYN_stepWorld(&world);
         controlView();
         draw();
-        usleep(40000);
+        usleep(20000);
 
         // finally, update the screen
         SDL_GL_SwapBuffers();

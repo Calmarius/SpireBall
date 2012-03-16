@@ -45,6 +45,10 @@ typedef struct DYN_Body
      */
     double angularVelocity[3];
     /**
+     * The moment of inertia for the current rotation axis.
+     */
+    double momentOfInertia;
+    /**
      * Cached rotation matrix. The orientation is multiplied with it.
      */
     double rotation[9];
@@ -110,5 +114,22 @@ void DYN_addBody(
  */
 void DYN_calculateMass(DYN_BodyStaticAttributes *attributes, double density);
 
+/**
+ * Cast a ray on the body.
+ *
+ * @param [in] body The body to cast the ray on.
+ * @param [in] point The pont to cast the ray from.
+ * @param [in] direction The direction of the vector.
+ * @param [out] length The multiplier factor to the direction vector to reach the body.
+ *
+ * @retval 0 The ray would miss the body.
+ * @retval Nonzero The ray hits the body.
+ */
+int DYN_castRay(
+    const DYN_Body *body,
+    const double *point,
+    const double *direction,
+    double *length
+);
 
 #endif // DYNAMICS_H

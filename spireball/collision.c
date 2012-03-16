@@ -163,10 +163,75 @@ int getSupportVectorOfLineSegment(const double *endPoints, double *supportVector
  * @retval Nonzero if the simplex contains the origin.
  * @retval Zero otherwise.
  */
-int getSupportVectorOfSymplex(double *simplexVertices, double *vertexCount, double *supportVector)
+int getSupportVectorOfSimplex(double *simplexVertices, int *vertexCount, double *supportVector)
 {
+    const double ORIGIN[3] = {0};
+    double remainingVertices[12];
+    double currentSimplex[12];
+    double supportVectorTmp[3];
+    double minLength = 0;
+    char found = 0;
+    int i, j, k, l;
+    int newVertexCount;
+
     assert(*vertexCount <= 4);
     assert(*vertexCount >= 1);
+
+    for (i = 0; i < *vertexCount; i++)
+    {
+        // 1 simplex
+        memcpy(&currentSimplex[0], &simplexVertices[3*i], sizeof(double) * 3);
+        if (!found || (ALG_dotProduct(currentSimplex, currentSimplex) < minLength) )
+        {
+            found = 1;
+            memcpy(remainingVertices, currentSimplex, sizeof(double) * 3);
+            newVertexCount = 1;
+            minLength = ALG_dotProduct(currentSimplex, currentSimplex);
+            memcpy(supportVector, currentSimplex, sizeof(supportVectorTmp));
+            ALG_scale(supportVector, -1);
+        }
+        for (j = i + 1; j < *vertexCount; j++)
+        {
+            // 2 simplex
+            memcpy(&currentSimplex[3], &simplexVertices[3*j], sizeof(double) * 3);
+            if (getSupportVectorOfLineSegment(currentSimplex, supportVectorTmp))
+            {
+                if (ALG_dotProduct(supportVectorTmp, supportVectorTmp) < minLength)
+                {
+                    memcpy(remainingVertices, currentSimplex, sizeof(double) * 6);
+                    newVertexCount = 2;
+                    minLength = ALG_dotProduct(supportVectorTmp, supportVectorTmp);
+                    memcpy(supportVector, supportVectorTmp, sizeof(supportVectorTmp));
+                }
+            }
+            for (k = j + 1; k < *vertexCount; k++)
+            {
+                // 3 simplex
+                memcpy(&currentSimplex[6], &simplexVertices[3*k], sizeof(double) * 3);
+                if (getSupportVectorOfTriangle(currentSimplex, supportVectorTmp))
+                {
+                    if (ALG_dotProduct(supportVectorTmp, supportVectorTmp) < minLength)
+                    {
+                        memcpy(remainingVertices, currentSimplex, sizeof(double) * 9);
+                        newVertexCount = 3;
+                        minLength = ALG_dotProduct(supportVectorTmp, supportVectorTmp);
+                        memcpy(supportVector, supportVectorTmp, sizeof(supportVectorTmp));
+                    }
+                }
+                for (l = k + 1; l < *vertexCount; l++)
+                {
+                    // 4 simplex
+                    if (isPointInTetraHedron(ORIGIN, simplexVertices))
+                    {
+                        return 1;
+                    }
+                }
+            }
+        }
+    }
+    memcpy(simplexVertices, remainingVertices, sizeof(double) * newVertexCount * 3);
+    *vertexCount = newVertexCount;
+
     return 0;
 }
 
@@ -174,6 +239,7 @@ int getSupportVectorOfSymplex(double *simplexVertices, double *vertexCount, doub
  * Calculates if two convex bodies intersect. (See GJK algorithm)
  *
  * @param [in] bodyAVertices, bodyBVertices The vertices of the two body, in arbitrary order.
+ * @param [in] bodyAVertexCount, bodyBVertexCount The vertex count of the two body.
  */
 int isConvexBodiesIntersect(
     const double *bodyAVertices,
@@ -182,6 +248,81 @@ int isConvexBodiesIntersect(
     int bodyBVertexCount
 )
 {
+    double simplexVertices[12];
+    int simplexVertexCount = 0;
+    double supportVector[3];
+    char alreadyInspected[bodyAVertexCount][bodyBVertexCount];
+
+    assert(bodyAVertexCount > 0);
+    assert(bodyBVertexCount > 0);
+
+    memset(alreadyInspected, 0, bodyAVertexCount * bodyBVertexCount);
+    // Set starting state.
+    ALG_getPointToPointVector(simplexVertices, bodyBVertices, bodyAVertices);
+    alreadyInspected[0][0] = 1;
+    simplexVertexCount = 1;
+    // Find nearest point.
+    for(;;)
+    {
+        if (getSupportVectorOfSimplex(simplexVertices, &simplexVertexCount, supportVector))
+        {
+            // simplex was a tetrahedron an origin was in the tetrahedron. This means intersection.
+            return 1;
+        }
+        // Find the farthest point of the Minkowski difference in the supportVector's direction.
+        {
+            double maxProduct;
+            double minProduct;
+            int i;
+            double maxVertex[3]; // The farthest point of the A body.
+            double minVertex[3];  // The nearest point of the B body.
+            int maxIndex; // index of the maximum vertex
+            int minIndex; // index of the minimum vertex
+            double minkowskiDifference[3];
+            double svLength = ALG_dotProduct(supportVector, supportVector);
+
+            if (svLength < 1e-9)
+            {
+                // support vector is null vector, it's sure that the minkowski difference touches the
+                // origin, intersection assured.
+                return 1;
+            }
+
+            for (i = 0; i < bodyAVertexCount; i++)
+            {
+                double currentProduct = ALG_dotProduct(supportVector, &bodyAVertices[3*i]);
+                if (!i || (currentProduct > maxProduct))
+                {
+                    maxProduct = currentProduct;
+                    maxIndex = i;
+                }
+            }
+            memcpy(maxVertex, &bodyAVertices[3*maxIndex], sizeof(double) * 3);
+
+            for (i = 0; i < bodyBVertexCount; i++)
+            {
+                double currentProduct = ALG_dotProduct(supportVector, &bodyBVertices[3*i]);
+                if (!i || (currentProduct < minProduct))
+                {
+                    minProduct = currentProduct;
+                    minIndex = i;
+                }
+            }
+            memcpy(minVertex, &bodyBVertices[3*minIndex], sizeof(double) * 3);
+            if (alreadyInspected[maxIndex][minIndex])
+            {
+                // We would add a vertex that's already inspected.
+                // This mean the two bodies does not intersect.
+                return 0;
+            }
+            alreadyInspected[maxIndex][minIndex] = 1;
+            assert(simplexVertexCount < 4);
+            ALG_getPointToPointVector(minkowskiDifference, minVertex, maxVertex);
+            memcpy(&simplexVertices[3*simplexVertexCount], minkowskiDifference, sizeof(double) * 3);
+            simplexVertexCount++;
+        }
+    }
+    assert(0);
     return 0;
 }
 
@@ -217,12 +358,12 @@ void getCuboidRawVertices(const DYN_BodyStaticAttributes *attr, double *vertices
  * @param [in] a The body.
  * @param [in,out] The array of vertices. Packed in [x,y,z,x,y,z,...] format.
  *      The array provided must be big enough to hold the data.
+ * @param [out] vertexCount The count of vertices of the body.
  */
-void getBodyVertices(const DYN_Body *a, double *vertices)
+void getBodyVertices(const DYN_Body *a, double *vertices, int *vertexCount)
 {
     const double *orientation = a->orientation;
     const double *position = a->position;
-    int vertexCount;
     int i;
 
     DYN_BodyStaticAttributes *attr = a->staticAttributes;
@@ -230,12 +371,12 @@ void getBodyVertices(const DYN_Body *a, double *vertices)
     {
         case DYN_BS_CUBOID:
             getCuboidRawVertices(attr, vertices);
-            vertexCount = 8;
+            *vertexCount = 8;
         break;
         default:
             assert(0);
     }
-    for (i = 0; i < vertexCount; i++)
+    for (i = 0; i < *vertexCount; i++)
     {
         double tmp[3];
         ALG_transform(tmp, &vertices[3*i], orientation);
@@ -248,9 +389,14 @@ void COL_collide(DYN_Body *a, DYN_Body *b)
 {
     double verticesA[24];
     double verticesB[24];
+    int vertexCountA, vertexCountB;
 
-    getBodyVertices(a, verticesA);
-    getBodyVertices(b, verticesB);
+    getBodyVertices(a, verticesA, &vertexCountA);
+    getBodyVertices(b, verticesB, &vertexCountB);
 
-
+    if (isConvexBodiesIntersect(verticesA, vertexCountA, verticesB, vertexCountB))
+    {
+        a->colliding = 1;
+        b->colliding = 1;
+    }
 }
