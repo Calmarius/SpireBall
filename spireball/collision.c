@@ -385,7 +385,7 @@ void getBodyVertices(const DYN_Body *a, double *vertices, int *vertexCount)
     }
 }
 
-void COL_collide(DYN_Body *a, DYN_Body *b)
+char COL_collide(DYN_Body *a, DYN_Body *b)
 {
     double verticesA[24];
     double verticesB[24];
@@ -398,5 +398,7 @@ void COL_collide(DYN_Body *a, DYN_Body *b)
     {
         a->colliding = 1;
         b->colliding = 1;
+        return 1;
     }
+    return 0;
 }

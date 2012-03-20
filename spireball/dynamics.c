@@ -158,9 +158,11 @@ void moveBody(DYN_Context *context, DYN_Body *body)
 {
     double newOrientation[9];
     // Translate the body.
+    memcpy(body->prevPosition, body->position, sizeof(body->position));
     ALG_translate(body->position, body->velocity);
     // Rotate the body
     ALG_multiplyMatrix(newOrientation, body->rotation, body->orientation);
+    memcpy(body->prevOrientation, body->orientation, sizeof(body->orientation));
     memcpy(body->orientation, newOrientation, sizeof(newOrientation));
 }
 
@@ -169,12 +171,35 @@ void DYN_initialize(DYN_Context *context, double timeStep)
     context->bodies = 0;
     context->bodiesAllocated = 0;
     context->timeStep = timeStep;
+    context->collidingPairsAllocated = 0;
+    context->collidingPairCount = 0;
 }
 
 void DYN_deinitialize(DYN_Context *context)
 {
     free(context->bodies);
     free(context->staticAttributes);
+}
+
+void addCollidingPair(DYN_Context *context, int a, int b)
+{
+    if (context->collidingPairCount == context->collidingPairsAllocated)
+    {
+        if (context->collidingPairCount)
+        {
+            context->collidingPairCount = 100;
+        }
+        else
+        {
+            context->collidingPairCount <<= 1;
+        }
+        context->collidingBodyPairs = realloc(
+            context->collidingBodyPairs,
+            context->collidingPairCount * sizeof(*context->collidingBodyPairs)
+        );
+    }
+    context->collidingBodyPairs[context->bodyCount][0] = a;
+    context->collidingBodyPairs[context->bodyCount][1] = b;
 }
 
 void DYN_stepWorld(DYN_Context *context)
@@ -194,7 +219,10 @@ void DYN_stepWorld(DYN_Context *context)
     {
         for (j = i + 1; j < context->bodyCount; j++)
         {
-            COL_collide(&context->bodies[i], &context->bodies[j]);
+            if (COL_collide(&context->bodies[i], &context->bodies[j]))
+            {
+                addCollidingPair(context, i, j);
+            }
         }
     }
     // STEP 3: Collsion resolution

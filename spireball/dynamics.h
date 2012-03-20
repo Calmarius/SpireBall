@@ -37,7 +37,9 @@ typedef struct DYN_Body
      * A matrix in row major order that stores the X, Y and Z directions of the object.
      */
     double orientation[9];
+    double prevOrientation[9]; ///< Previous orientation of the object.
     double position[3]; ///< Position of the object
+    double prevPosition[3]; ///< Position of the object in previous frame
     double velocity[3]; ///< Velocity of the object (units/timestep)
     /**
      * Angular velocity of the object. The direction of the vector is the rotation axis
@@ -72,6 +74,9 @@ typedef struct DYN_Context
     int bodyCount; ///< Count of bodies.
     int bodiesAllocated; ///< Allocated space for the bodies.
     DYN_BodyStaticAttributes *staticAttributes; ///< Array that stores the the static attributes of the body.
+    int (*collidingBodyPairs)[2]; ///< Array that stores the indexes of the collidining bodies.
+    int collidingPairCount; ///< Count of colliding pairs.
+    int collidingPairsAllocated; ///< Allocated count of colliding pairs.
 } DYN_Context;
 
 /**
