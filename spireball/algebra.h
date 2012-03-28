@@ -147,5 +147,15 @@ double ALG_getDeterminant(const double *M);
  * @retval Zero otherwise
  */
 int ALG_isNullVector(const double *v);
+/**
+ * Interpolates two arrays
+ *
+ * @param [in,out] result The resulting array.
+ * @param [in] a,b The two arrays to interpolate.
+ * @param [in] n The number of elements in the array.
+ * @param [in] iFactor The interpolation factor.
+ *
+ */
+void ALG_interpolateArray(double *result, const double *a, const double *b, int n, double iFactor);
 
 #endif // ALG_Vector_H

@@ -45,6 +45,7 @@ int mouseRelX, mouseRelY;
 DYN_Context world;
 const int RESOLUTION_X = 1024;
 const int RESOLUTION_Y = 768;
+extern double COL_latestNearestPoints[6];
 
 GLuint cubeModel;
 
@@ -233,6 +234,8 @@ void draw2D()
     glEnd();
 }
 
+double *COL_queryLatestNearest();
+
 void draw()
 {
     GLfloat position[4] = {1, 1, 1, 0};
@@ -275,6 +278,16 @@ void draw()
     glLightfv(GL_LIGHT0, GL_POSITION, position);
 
     // Drawing
+
+    glBegin(GL_LINES);
+    {
+        double *nearest = COL_queryLatestNearest();
+        glColor3f(1, 0, 0);
+        glVertex3f(nearest[0], nearest[1], nearest[2]);
+        glColor3f(0, 1, 0);
+        glVertex3f(nearest[3], nearest[4], nearest[5]);
+    }
+    glEnd();
 
     drawAxes();
     drawGrid();
@@ -640,7 +653,16 @@ int main ( int argc, char** argv )
 
         //applyImpulse(&world, &world.bodies[0], pointOfImpulse, impulse);
 
-        {
+        body.position[0] = 10;
+        body.position[1] = 0;
+        body.position[2] = 5;
+        attributes.shape = DYN_BS_CUBOID;
+        attributes.cuboidAttributes.width = 3;
+        attributes.cuboidAttributes.height = 3;
+        attributes.cuboidAttributes.depth = 3;
+        DYN_addBody(&world, &body, &attributes);
+
+/*        {
             int i,j,k;
             for (i = 0; i < 3; i++)
             {
@@ -655,7 +677,7 @@ int main ( int argc, char** argv )
                     }
                 }
             }
-        }
+        }*/
     }
 
     // initialize SDL video

@@ -173,3 +173,16 @@ int ALG_isNullVector(const double *v)
         (fabs(v[1]) < 1e-9) &&
         (fabs(v[2]) < 1e-9);
 }
+
+void ALG_interpolateArray(double *result, const double *a, const double *b, int n, double iFactor)
+{
+    int i;
+    for (i = 0; i < n; i++)
+    {
+        result[i] = (1 - iFactor) * a[i] + iFactor * b[i];
+    }
+}
+
+
+
+

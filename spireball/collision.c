@@ -61,11 +61,12 @@ int isPointInTetraHedron(const double *point,const double *tetrahedron)
  *
  * @param [in] triangle the vertices of the triangle (9 elements [x,y,z,x,y,z,x,y,z])
  * @param [out] supportVector The support vector. It must be big enough to store 3 elements.
+ * @param [out] k, l Two interpolating factors, interpolating between the 3 vertices of the triangle.
  *
  * @retval Nonzero if the support vector is valid (the support point is on the triangle)
  * @retval Zero if no prependicular support vector exist.
  */
-int getSupportVectorOfTriangle(const double *triangle, double *supportVector)
+int getSupportVectorOfTriangle(const double *triangle, double *supportVector, double *k, double *l)
 {
      /* 3 column vectors. Two side vectors of the triangle for the first vertex
       * and one which is prependicular to them.
@@ -109,6 +110,8 @@ int getSupportVectorOfTriangle(const double *triangle, double *supportVector)
     }
     // calculate the support vector
     ALG_scale(supportVector, coefficients[2]);
+    *k = coefficients[0];
+    *l = coefficients[1];
     return 1;
 }
 
@@ -117,15 +120,16 @@ int getSupportVectorOfTriangle(const double *triangle, double *supportVector)
  *
  * @param [in] endPoints the two endpoint of the line segment.
  * @param [out] supportVector The support vector. It must be big enough to store 3 elements.
+ * @param [out] factor Interpolation coefficient between the points.
  *
  * @retval Nonzero if the support vector is valid (the support point is on the linesegment)
  * @retval Zero if no prependicular support vector exist.
  */
-int getSupportVectorOfLineSegment(const double *endPoints, double *supportVector)
+int getSupportVectorOfLineSegment(const double *endPoints, double *supportVector, double *factor)
 {
     double dirVector[3];
-    double k; //< interpolating coefficient.
     double dirSquare;
+    double k;
 
     ALG_getPointToPointVector(dirVector, endPoints, &endPoints[3]);
     dirSquare = ALG_dotProduct(dirVector, dirVector);
@@ -141,6 +145,8 @@ int getSupportVectorOfLineSegment(const double *endPoints, double *supportVector
         // support point is outside the segment.
         return 0;
     }
+    *factor = k;
+    k = -ALG_dotProduct(endPoints, dirVector) / dirSquare;
     memcpy(supportVector, endPoints, sizeof(*supportVector) * 3); // A
     ALG_scale(dirVector, k); // calculate kv
     ALG_translate(supportVector, dirVector); // calculate A + kv
@@ -159,11 +165,21 @@ int getSupportVectorOfLineSegment(const double *endPoints, double *supportVector
  * @param [in,out] vertexCount Count of the vertices in the simplex. This value may change.
  * @param [in,out] supportVector The support vector will be stored here.
  *      (The user must provide an array to store 3 elements.)
+ * @param [in, out] remainingIndices An array of vertexCount elements whose elements indicate
+ *      whether the vertex in the original array is kept or deleted.
+ * @param [in,out] interpolatingFactors 2-element array, storing 0, 1 or 2 interpolating factors
+ *      depending on the supporting simplex.
  *
  * @retval Nonzero if the simplex contains the origin.
  * @retval Zero otherwise.
  */
-int getSupportVectorOfSimplex(double *simplexVertices, int *vertexCount, double *supportVector)
+int getSupportVectorOfSimplex(
+    double *simplexVertices,
+    int *vertexCount,
+    double *supportVector,
+    char *remainingIndices,
+    double *interpolatingFactors
+)
 {
     const double ORIGIN[3] = {0};
     double remainingVertices[12];
@@ -173,6 +189,7 @@ int getSupportVectorOfSimplex(double *simplexVertices, int *vertexCount, double 
     char found = 0;
     int i, j, k, l;
     int newVertexCount;
+    double factorsTmp[2]; //
 
     assert(*vertexCount <= 4);
     assert(*vertexCount >= 1);
@@ -189,12 +206,14 @@ int getSupportVectorOfSimplex(double *simplexVertices, int *vertexCount, double 
             minLength = ALG_dotProduct(currentSimplex, currentSimplex);
             memcpy(supportVector, currentSimplex, sizeof(supportVectorTmp));
             ALG_scale(supportVector, -1);
+            memset(remainingIndices, 0, sizeof(char) * *vertexCount);
+            remainingIndices[i] = 1;
         }
         for (j = i + 1; j < *vertexCount; j++)
         {
             // 2 simplex
             memcpy(&currentSimplex[3], &simplexVertices[3*j], sizeof(double) * 3);
-            if (getSupportVectorOfLineSegment(currentSimplex, supportVectorTmp))
+            if (getSupportVectorOfLineSegment(currentSimplex, supportVectorTmp, factorsTmp))
             {
                 if (ALG_dotProduct(supportVectorTmp, supportVectorTmp) < minLength)
                 {
@@ -202,13 +221,22 @@ int getSupportVectorOfSimplex(double *simplexVertices, int *vertexCount, double 
                     newVertexCount = 2;
                     minLength = ALG_dotProduct(supportVectorTmp, supportVectorTmp);
                     memcpy(supportVector, supportVectorTmp, sizeof(supportVectorTmp));
+                    memset(remainingIndices, 0, sizeof(char) * *vertexCount);
+                    remainingIndices[i] = 1;
+                    remainingIndices[j] = 1;
+                    memcpy(interpolatingFactors, factorsTmp, sizeof(factorsTmp));
                 }
             }
             for (k = j + 1; k < *vertexCount; k++)
             {
                 // 3 simplex
                 memcpy(&currentSimplex[6], &simplexVertices[3*k], sizeof(double) * 3);
-                if (getSupportVectorOfTriangle(currentSimplex, supportVectorTmp))
+                if (getSupportVectorOfTriangle(
+                    currentSimplex,
+                    supportVectorTmp,
+                    &factorsTmp[0],
+                    &factorsTmp[1])
+                )
                 {
                     if (ALG_dotProduct(supportVectorTmp, supportVectorTmp) < minLength)
                     {
@@ -216,6 +244,11 @@ int getSupportVectorOfSimplex(double *simplexVertices, int *vertexCount, double 
                         newVertexCount = 3;
                         minLength = ALG_dotProduct(supportVectorTmp, supportVectorTmp);
                         memcpy(supportVector, supportVectorTmp, sizeof(supportVectorTmp));
+                        memset(remainingIndices, 0, sizeof(char) * *vertexCount);
+                        remainingIndices[i] = 1;
+                        remainingIndices[j] = 1;
+                        remainingIndices[k] = 1;
+                        memcpy(interpolatingFactors, factorsTmp, sizeof(factorsTmp));
                     }
                 }
                 for (l = k + 1; l < *vertexCount; l++)
@@ -223,6 +256,7 @@ int getSupportVectorOfSimplex(double *simplexVertices, int *vertexCount, double 
                     // 4 simplex
                     if (isPointInTetraHedron(ORIGIN, simplexVertices))
                     {
+                            memset(remainingIndices, 1, sizeof(char) * *vertexCount);
                         return 1;
                     }
                 }
@@ -240,18 +274,23 @@ int getSupportVectorOfSimplex(double *simplexVertices, int *vertexCount, double 
  *
  * @param [in] bodyAVertices, bodyBVertices The vertices of the two body, in arbitrary order.
  * @param [in] bodyAVertexCount, bodyBVertexCount The vertex count of the two body.
+ * @param [in,out] nearestPoints 6 element array, stores the two nearest points of the
+ *      two bodies.
  */
 int isConvexBodiesIntersect(
     const double *bodyAVertices,
     int bodyAVertexCount,
     const double *bodyBVertices,
-    int bodyBVertexCount
+    int bodyBVertexCount,
+    double *nearestPoints
 )
 {
     double simplexVertices[12];
+    char simplexVertexIndexPairs[4][2]; // Stores the pairs of indices of the vertices the simplex vertices is calculated from.
     int simplexVertexCount = 0;
     double supportVector[3];
     char alreadyInspected[bodyAVertexCount][bodyBVertexCount];
+    double interpolationFactors[2];
 
     assert(bodyAVertexCount > 0);
     assert(bodyBVertexCount > 0);
@@ -261,13 +300,38 @@ int isConvexBodiesIntersect(
     ALG_getPointToPointVector(simplexVertices, bodyBVertices, bodyAVertices);
     alreadyInspected[0][0] = 1;
     simplexVertexCount = 1;
+    simplexVertexIndexPairs[0][0] = 0;
+    simplexVertexIndexPairs[0][1] = 0;
     // Find nearest point.
     for(;;)
     {
-        if (getSupportVectorOfSimplex(simplexVertices, &simplexVertexCount, supportVector))
+        char remainingVertices[4]; //
+        if (getSupportVectorOfSimplex(
+            simplexVertices,
+            &simplexVertexCount,
+            supportVector,
+            remainingVertices,
+            interpolationFactors)
+        )
         {
             // simplex was a tetrahedron an origin was in the tetrahedron. This means intersection.
             return 1;
+        }
+        {
+            // Update the vertex index pairs based on the remaining vertices.
+            char tmp[4][2];
+            int i;
+            int c = 0;
+            for (i = 0; i < 4; i++)
+            {
+                if (remainingVertices[i])
+                {
+                    memcpy(tmp[c], simplexVertexIndexPairs[i], sizeof(tmp[c]));
+                    c++;
+                }
+            }
+            memcpy(simplexVertexIndexPairs, tmp, sizeof(tmp));
+            // Now simplexVertices array and the simplexVertexIndexPairs array is in sync.
         }
         // Find the farthest point of the Minkowski difference in the supportVector's direction.
         {
@@ -313,12 +377,38 @@ int isConvexBodiesIntersect(
             {
                 // We would add a vertex that's already inspected.
                 // This mean the two bodies does not intersect.
+                // Calculate the two nearest points.
+                int i;
+                double refPoint[3];
+                double pointA[3];
+                memcpy(
+                    refPoint,
+                    &bodyAVertices[3 * simplexVertexIndexPairs[0][0]],
+                    sizeof(refPoint)
+                );
+                memcpy(pointA, refPoint, sizeof(pointA));
+                for (i = 1; i < simplexVertexCount; i++)
+                {
+                    double sideVector[3];
+                    ALG_getPointToPointVector(
+                        sideVector,
+                        refPoint,
+                        &bodyAVertices[3 * simplexVertexIndexPairs[i][0]]
+                    );
+                    ALG_scale(sideVector, interpolationFactors[i - 1]);
+                    ALG_translate(pointA, sideVector);
+                }
+                memcpy(&nearestPoints[0], pointA, 3 * sizeof(*nearestPoints));
+                memcpy(&nearestPoints[3], pointA, 3 * sizeof(*nearestPoints));
+                ALG_translate(&nearestPoints[3], supportVector);
                 return 0;
             }
             alreadyInspected[maxIndex][minIndex] = 1;
             assert(simplexVertexCount < 4);
             ALG_getPointToPointVector(minkowskiDifference, minVertex, maxVertex);
             memcpy(&simplexVertices[3*simplexVertexCount], minkowskiDifference, sizeof(double) * 3);
+            simplexVertexIndexPairs[simplexVertexCount][0] = maxIndex;
+            simplexVertexIndexPairs[simplexVertexCount][1] = minIndex;
             simplexVertexCount++;
         }
     }
@@ -385,6 +475,13 @@ void getBodyVertices(const DYN_Body *a, double *vertices, int *vertexCount)
     }
 }
 
+double COL_latestNearestPoints[6] = {0};
+
+double *COL_queryLatestNearest()
+{
+    return COL_latestNearestPoints;
+}
+
 char COL_collide(DYN_Body *a, DYN_Body *b)
 {
     double verticesA[24];
@@ -394,7 +491,13 @@ char COL_collide(DYN_Body *a, DYN_Body *b)
     getBodyVertices(a, verticesA, &vertexCountA);
     getBodyVertices(b, verticesB, &vertexCountB);
 
-    if (isConvexBodiesIntersect(verticesA, vertexCountA, verticesB, vertexCountB))
+    if (isConvexBodiesIntersect(
+        verticesA,
+        vertexCountA,
+        verticesB,
+        vertexCountB,
+        COL_latestNearestPoints)
+    )
     {
         a->colliding = 1;
         b->colliding = 1;

@@ -34,25 +34,38 @@ double computeMomentOfInertia(const double *tensor, const double *axis)
 }
 
 /**
+ * Returns the rotation matrix, that rotates body in the given fraction of the timestep.
+ *
+ * @param [in] body The body to query.
+ * @param [in,out] rotation The resulting rotation matrix
+ * @param [in] timeStepFactor The factor of one time step. 0 means no rotation.
+ *      1 means full timestep, between 0 and 1 means fraction of time step.
+ */
+void getRotation(const DYN_Body *body, double *rotation, double timeStepFactor)
+{
+    double angularSpeed = ALG_getVectorLength(body->angularVelocity) * timeStepFactor;
+    double axis[3];
+
+    memcpy(axis, body->angularVelocity, sizeof(axis));
+    if (ALG_isNullVector(axis))
+    {
+        memcpy(rotation, DYN_IDENTITY, sizeof(DYN_IDENTITY));
+    }
+    else
+    {
+        ALG_normalizeVector(axis);
+        ALG_createRotationMatrix(rotation, axis, angularSpeed);
+    }
+}
+
+/**
  * Updates the rotation matrix for a body.
  *
  * @param [in,out] body The body to update the rotation of.
  */
 void updateRotation(DYN_Body *body)
 {
-    double angularSpeed = ALG_getVectorLength(body->angularVelocity);
-    double axis[3];
-
-    memcpy(axis, body->angularVelocity, sizeof(axis));
-    if (ALG_isNullVector(axis))
-    {
-        memcpy(body->rotation, DYN_IDENTITY, sizeof(DYN_IDENTITY));
-    }
-    else
-    {
-        ALG_normalizeVector(axis);
-        ALG_createRotationMatrix(body->rotation, axis, angularSpeed);
-    }
+    getRotation(body, body->rotation, 1);
 }
 
 /**
@@ -136,12 +149,12 @@ void applyImpulse(
         ALG_transform(tmp, bodyRotationAxis, body->staticAttributes->intertiaTensor);
         momentOfInertiaCurrentAxis = ALG_dotProduct(tmp, bodyRotationAxis);
         assert(momentOfInertiaCurrentAxis >= 0);
-        // Calculate the current angular impulse of the body
+        // Calculate the current angular momentum of the body
         memcpy(angularMomentum, body->angularVelocity, sizeof(tmp));
         ALG_scale(angularMomentum, momentOfInertiaCurrentAxis); // current angular momentum
         ALG_scale(angularImpulse, context->timeStep);
         ALG_translate(angularMomentum, angularImpulse); // new angular momentum.
-        // Update angular velocity and momentum and rotation.
+        // Update angular velocity and rotation.
         updateAngularVelocity(body, angularMomentum);
     }
     //fprintf(f, "\n");
@@ -149,21 +162,55 @@ void applyImpulse(
 }
 
 /**
+ * Reverts the previous movement of the body.
+ *
+ * @param [in] body The body to revert.
+ */
+void revertMovement(DYN_Body *body)
+{
+    memcpy(body->position, body->prevPosition, sizeof(body->position));
+    memcpy(body->orientation, body->prevOrientation, sizeof(body->orientation));
+}
+
+/**
  * Moves the body using its attributes.
  *
  * @param [in,out] body The body to move.
- * @param [in] timeStep The time interval.
+ * @param [in] subStepFactor It's possible move the body in a smaller step than the time step
+ *      set in the context, this is slower. 0 means no movement, return immedately, 1 means
+ *      full step, which is fast, because the rotation is cached. Otherwise the calculation is slower.
  */
-void moveBody(DYN_Context *context, DYN_Body *body)
+void moveBody(DYN_Body *body, double subStepFactor)
 {
     double newOrientation[9];
-    // Translate the body.
-    memcpy(body->prevPosition, body->position, sizeof(body->position));
-    ALG_translate(body->position, body->velocity);
-    // Rotate the body
-    ALG_multiplyMatrix(newOrientation, body->rotation, body->orientation);
-    memcpy(body->prevOrientation, body->orientation, sizeof(body->orientation));
-    memcpy(body->orientation, newOrientation, sizeof(newOrientation));
+
+    if (subStepFactor == 0) return;
+    if (subStepFactor == 1)
+    {
+        // Translate the body.
+        memcpy(body->prevPosition, body->position, sizeof(body->position));
+        ALG_translate(body->position, body->velocity);
+        // Rotate the body
+        ALG_multiplyMatrix(newOrientation, body->rotation, body->orientation);
+        memcpy(body->prevOrientation, body->orientation, sizeof(body->orientation));
+        memcpy(body->orientation, newOrientation, sizeof(newOrientation));
+    }
+    else
+    {
+        double stepVelocity[3];
+        double stepRotation[9];
+
+        // Translate the body.
+        memcpy(body->prevPosition, body->position, sizeof(body->position));
+        memcpy(stepVelocity, body->velocity, sizeof(stepVelocity));
+        ALG_scale(stepVelocity, subStepFactor);
+        ALG_translate(body->position, stepVelocity);
+        // Rotate the body
+        getRotation(body, stepRotation, subStepFactor);
+        ALG_multiplyMatrix(newOrientation, stepRotation, body->orientation);
+        memcpy(body->prevOrientation, body->orientation, sizeof(body->orientation));
+        memcpy(body->orientation, newOrientation, sizeof(newOrientation));
+    }
 }
 
 void DYN_initialize(DYN_Context *context, double timeStep)
@@ -185,7 +232,7 @@ void addCollidingPair(DYN_Context *context, int a, int b)
 {
     if (context->collidingPairCount == context->collidingPairsAllocated)
     {
-        if (context->collidingPairCount)
+        if (!context->collidingPairCount)
         {
             context->collidingPairCount = 100;
         }
@@ -205,27 +252,66 @@ void addCollidingPair(DYN_Context *context, int a, int b)
 void DYN_stepWorld(DYN_Context *context)
 {
     int i, j;
-    // STEP 1: Moving bodies
-    for (i = 0; i < context->bodyCount; i++)
+    double remainingTime = 1;
+    char wasCollision = 0;
+
+    //while (remainingTime > 0)
     {
-        moveBody(context, &context->bodies[i]);
-    }
-    // STEP 2: Collision detection
-    for (i = 0; i < context->bodyCount; i++)
-    {
-        context->bodies[i].colliding = 0;
-    }
-    for (i = 0; i < context->bodyCount; i++)
-    {
-        for (j = i + 1; j < context->bodyCount; j++)
+        // STEP 1: Moving bodies
+        for (i = 0; i < context->bodyCount; i++)
         {
-            if (COL_collide(&context->bodies[i], &context->bodies[j]))
+            moveBody(&context->bodies[i], remainingTime);
+        }
+        // STEP 2: Collision detection
+        for (i = 0; i < context->bodyCount; i++)
+        {
+            context->bodies[i].colliding = 0;
+        }
+        for (i = 0; i < context->bodyCount; i++)
+        {
+            for (j = i + 1; j < context->bodyCount; j++)
             {
-                addCollidingPair(context, i, j);
+                if (COL_collide(&context->bodies[i], &context->bodies[j]))
+                {
+                    addCollidingPair(context, i, j);
+                    wasCollision = 1;
+                }
             }
         }
+        if (wasCollision)
+        {
+            // There was collision
+            // STEP 3: Find earliest collision
+            {
+                double earliestTime = 1;
+                int i, j;
+                // Find the earliest collision.
+/*                for (i = 0; i < context->collidingPairCount; i++)
+                {
+                    DYN_Body *a = &context->bodies[context->collidingBodyPairs[i][0]];
+                    DYN_Body *b = &context->bodies[context->collidingBodyPairs[i][1]];
+                    double lower = 0;
+                    double upper = 1;
+                    // Do bisection to find out the point of impact.
+                    for (j = 0; j < 10; j++)
+                    {
+                        double middle = (lower + upper) * 0.5;
+
+                        revertMovement(a);
+                        revertMovement(b);
+                        moveBody(a, middle);
+                        moveBody(b, middle);
+
+                    }
+                }*/
+            }
+        }
+        else
+        {
+            // No collision, step finished
+//            break;
+        }
     }
-    // STEP 3: Collsion resolution
 }
 
 void DYN_addBody(
