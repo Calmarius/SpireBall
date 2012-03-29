@@ -335,7 +335,7 @@ void shotRay()
     }
     if (bodyIndex >= 0)
     {
-        ALG_scale(forwardVector, 20);
+        ALG_scale(forwardVector, 1);
         applyImpulse(&world, &world.bodies[bodyIndex], camPosition, forwardVector);
     }
 }
@@ -653,13 +653,14 @@ int main ( int argc, char** argv )
 
         //applyImpulse(&world, &world.bodies[0], pointOfImpulse, impulse);
 
-        body.position[0] = 10;
+        body.position[0] = 0;
         body.position[1] = 0;
-        body.position[2] = 5;
+        body.position[2] = 100;
         attributes.shape = DYN_BS_CUBOID;
         attributes.cuboidAttributes.width = 3;
         attributes.cuboidAttributes.height = 3;
         attributes.cuboidAttributes.depth = 3;
+        DYN_calculateMass(&attributes, 1);
         DYN_addBody(&world, &body, &attributes);
 
 /*        {

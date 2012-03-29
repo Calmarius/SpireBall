@@ -116,7 +116,7 @@ void updateAngularVelocity(DYN_Body *body, const double *angularMomentum)
  * @param [in] context The context the body is in.
  * @param [in,out] body The body to apply the impulse to.
  * @param [in] pointOfForce The point where the force applied.
- * @param [in] impulseVector The direction and strength of the impulse (in Ns)
+ * @param [in] impulseVector The direction and strength of the impulse (in N * time_step)
  *
  */
 void applyImpulse(
@@ -134,7 +134,7 @@ void applyImpulse(
     ALG_crossProduct(angularImpulse, radius, impulseVector);
     // Apply the change to the linear momentum
     memcpy(tmp, impulseVector, sizeof(tmp));
-    ALG_scale(tmp, context->timeStep / body->staticAttributes->mass);
+    ALG_scale(tmp, 1 / body->staticAttributes->mass);
     ALG_translate(body->velocity, tmp);
     if (!ALG_isNullVector(angularImpulse))
     {
@@ -152,7 +152,6 @@ void applyImpulse(
         // Calculate the current angular momentum of the body
         memcpy(angularMomentum, body->angularVelocity, sizeof(tmp));
         ALG_scale(angularMomentum, momentOfInertiaCurrentAxis); // current angular momentum
-        ALG_scale(angularImpulse, context->timeStep);
         ALG_translate(angularMomentum, angularImpulse); // new angular momentum.
         // Update angular velocity and rotation.
         updateAngularVelocity(body, angularMomentum);
@@ -232,30 +231,118 @@ void addCollidingPair(DYN_Context *context, int a, int b)
 {
     if (context->collidingPairCount == context->collidingPairsAllocated)
     {
-        if (!context->collidingPairCount)
+        if (!context->collidingPairsAllocated)
         {
-            context->collidingPairCount = 100;
+            context->collidingPairsAllocated = 100;
         }
         else
         {
-            context->collidingPairCount <<= 1;
+            context->collidingPairsAllocated <<= 1;
         }
         context->collidingBodyPairs = realloc(
             context->collidingBodyPairs,
-            context->collidingPairCount * sizeof(*context->collidingBodyPairs)
+            context->collidingPairsAllocated * sizeof(*context->collidingBodyPairs)
         );
     }
-    context->collidingBodyPairs[context->bodyCount][0] = a;
-    context->collidingBodyPairs[context->bodyCount][1] = b;
+    context->collidingBodyPairs[context->collidingPairCount][0] = a;
+    context->collidingBodyPairs[context->collidingPairCount][1] = b;
+    context->collidingPairCount++;
 }
+
+void clearCollidingPairs(DYN_Context *context)
+{
+    context->collidingPairCount = 0;
+}
+
+char resolveCollision
+(
+    DYN_Context *context,
+    DYN_Body *a,
+    DYN_Body *b,
+    double *collisionPoint,
+    double *impulseDirection
+)
+{
+    double radiusA[3];
+    double radiusB[3];
+    double collisionPointVelocityA[3];
+    double collisionPointVelocityB[3];
+    double normal[3]; // The impulse's direction A gives B.
+    double tmp[3];
+    double relativeCollisionPointVelocity[3];
+    double impulseStrength;
+    double elasticity = 1;
+    double normalComponent;
+    double tmpA[3];
+    double tmpB[3];
+    double momentOfInertiaA, momentOfInertiaB;
+    double tmpANorm[3], tmpBNorm[3];
+
+
+    // Get a normalized unit vector
+    memcpy(normal, impulseDirection, sizeof(normal));
+    ALG_normalizeVector(normal);
+    // Get vectors drawn from mass center to the collision point.
+    ALG_getPointToPointVector(radiusA, a->position, collisionPoint);
+    ALG_getPointToPointVector(radiusB, b->position, collisionPoint);
+    // Calculate the speed of the collision points on the bodies.
+    memcpy(collisionPointVelocityA, a->velocity, sizeof(collisionPointVelocityA));
+    ALG_crossProduct(tmp, a->angularVelocity, radiusA);
+    ALG_translate(collisionPointVelocityA, tmp);
+    memcpy(collisionPointVelocityB, b->velocity, sizeof(collisionPointVelocityB));
+    ALG_crossProduct(tmp, b->angularVelocity, radiusB);
+    ALG_translate(collisionPointVelocityB, tmp);
+    // Get relative collision point velocity
+    ALG_getPointToPointVector(
+        relativeCollisionPointVelocity,
+        collisionPointVelocityA,
+        collisionPointVelocityB
+    );
+    normalComponent = ALG_dotProduct(normal, relativeCollisionPointVelocity);
+    if (normalComponent > 0)
+    {
+        // In this case, the two bodies separating, they cannot collide.
+        return 0;
+    }
+    // Calculate the strength of the impulse
+    ALG_crossProduct(tmpA, radiusA, normal);
+    ALG_crossProduct(tmpB, radiusB, normal);
+    memcpy(tmpANorm, tmpA, sizeof(tmpANorm));
+    memcpy(tmpBNorm, tmpB, sizeof(tmpBNorm));
+    ALG_normalizeVector(tmpANorm);
+    ALG_normalizeVector(tmpBNorm);
+
+    momentOfInertiaA = computeMomentOfInertia(
+        a->staticAttributes->intertiaTensor,
+        tmpANorm
+    );
+    momentOfInertiaB = computeMomentOfInertia(
+        b->staticAttributes->intertiaTensor,
+        tmpBNorm
+    );
+
+    impulseStrength =
+        (-(1 + elasticity)*ALG_dotProduct(relativeCollisionPointVelocity, normal) )/
+        (1/a->staticAttributes->mass + 1/b->staticAttributes->mass +
+            ALG_dotProduct(tmpA, tmpA)/momentOfInertiaA +
+            ALG_dotProduct(tmpB, tmpB)/momentOfInertiaB)
+        ;
+    ALG_scale(normal, impulseStrength);
+    applyImpulse(context, b, collisionPoint, normal);
+    ALG_scale(normal, -1);
+    applyImpulse(context, a, collisionPoint, normal);
+    return 1;
+}
+
 
 void DYN_stepWorld(DYN_Context *context)
 {
     int i, j;
     double remainingTime = 1;
     char wasCollision = 0;
+    double nearestPoints[6];
 
-    //while (remainingTime > 0)
+    while (remainingTime > 0)
     {
         // STEP 1: Moving bodies
         for (i = 0; i < context->bodyCount; i++)
@@ -271,7 +358,8 @@ void DYN_stepWorld(DYN_Context *context)
         {
             for (j = i + 1; j < context->bodyCount; j++)
             {
-                if (COL_collide(&context->bodies[i], &context->bodies[j]))
+                double nearestPoints[6];
+                if (COL_collide(&context->bodies[i], &context->bodies[j], nearestPoints))
                 {
                     addCollidingPair(context, i, j);
                     wasCollision = 1;
@@ -280,36 +368,77 @@ void DYN_stepWorld(DYN_Context *context)
         }
         if (wasCollision)
         {
+            double currentImpulseVector[3];
+            double currentCollisionPoint[3];
+            double minTime = remainingTime;
+            int earlyAIndex, earlyBIndex;
             // There was collision
             // STEP 3: Find earliest collision
+            int i;
+            // Find the earliest collision.
+            for (i = 0; i < context->collidingPairCount; i++)
             {
-                double earliestTime = 1;
-                int i, j;
-                // Find the earliest collision.
-/*                for (i = 0; i < context->collidingPairCount; i++)
+                DYN_Body *a = &context->bodies[context->collidingBodyPairs[i][0]];
+                DYN_Body *b = &context->bodies[context->collidingBodyPairs[i][1]];
+                double lower = 0;
+                double upper = remainingTime;
+                for(;;)
                 {
-                    DYN_Body *a = &context->bodies[context->collidingBodyPairs[i][0]];
-                    DYN_Body *b = &context->bodies[context->collidingBodyPairs[i][1]];
-                    double lower = 0;
-                    double upper = 1;
-                    // Do bisection to find out the point of impact.
-                    for (j = 0; j < 10; j++)
+                    double middle = (lower + upper) * 0.5;
+
+                    revertMovement(a);
+                    revertMovement(b);
+                    moveBody(a, middle);
+                    moveBody(b, middle);
+                    if (COL_collide(a, b, nearestPoints))
                     {
-                        double middle = (lower + upper) * 0.5;
-
-                        revertMovement(a);
-                        revertMovement(b);
-                        moveBody(a, middle);
-                        moveBody(b, middle);
-
+                        upper = middle;
                     }
-                }*/
+                    else
+                    {
+                        double tmp[3];
+                        lower = middle;
+                        ALG_getPointToPointVector(tmp, nearestPoints, &nearestPoints[3]);
+                        if (ALG_dotProduct(tmp, tmp) < 1e-4)
+                        {
+                            // The two bodies are near each other.
+                            if (middle < minTime)
+                            {
+                                minTime = middle;
+                                earlyAIndex = context->collidingBodyPairs[i][0];
+                                earlyBIndex = context->collidingBodyPairs[i][1];
+                                memcpy(currentImpulseVector, tmp, sizeof(currentImpulseVector));
+                                memcpy(currentCollisionPoint, nearestPoints, sizeof(currentCollisionPoint));
+                            }
+                            break;
+                        }
+                    }
+                }
             }
+            // Revert and move all bodies to the collision moment.
+            for (i = 0; i < context->bodyCount; i++)
+            {
+                DYN_Body *current = &context->bodies[i];
+                revertMovement(current);
+                moveBody(current, minTime);
+            }
+            // Resolve the collision
+             resolveCollision(
+                context,
+                &context->bodies[earlyAIndex],
+                &context->bodies[earlyBIndex],
+                currentCollisionPoint,
+                currentImpulseVector
+            );
+            //
+            clearCollidingPairs(context);
+            // Continue the simulation
+            remainingTime -= minTime;
         }
         else
         {
             // No collision, step finished
-//            break;
+            break;
         }
     }
 }

@@ -482,7 +482,7 @@ double *COL_queryLatestNearest()
     return COL_latestNearestPoints;
 }
 
-char COL_collide(DYN_Body *a, DYN_Body *b)
+char COL_collide(DYN_Body *a, DYN_Body *b, double *nearestPoints)
 {
     double verticesA[24];
     double verticesB[24];
@@ -496,7 +496,7 @@ char COL_collide(DYN_Body *a, DYN_Body *b)
         vertexCountA,
         verticesB,
         vertexCountB,
-        COL_latestNearestPoints)
+        nearestPoints)
     )
     {
         a->colliding = 1;
