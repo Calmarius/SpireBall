@@ -183,6 +183,78 @@ void ALG_interpolateArray(double *result, const double *a, const double *b, int 
     }
 }
 
+void ALG_multiplyRow(double *matrix, char rowId, double factor)
+{
+    int i;
+    assert(rowId >= 0);
+    assert(rowId <= 2);
+    for (i = 0; i < 3; i++)
+    {
+        matrix[rowId * 3 + i] *= factor;
+    }
+}
+
+void ALG_performRowOperation(double *matrix, char dstRowId, char sourceRowId, double factor)
+{
+    int i;
+    assert(dstRowId >= 0);
+    assert(dstRowId < 3);
+    assert(sourceRowId >= 0);
+    assert(sourceRowId < 3);
+
+    for (i = 0; i < 3; i++)
+    {
+        matrix[dstRowId * 3 + i] += matrix[sourceRowId * 3 + i] * factor;
+    }
+}
+
+char ALG_invertMatrix(double *inverse, const double *matrix)
+{
+    double workingMatrix[9];
+    int i, j;
+
+    memcpy(workingMatrix, matrix, sizeof(workingMatrix));
+    memset(inverse, 0, sizeof(*inverse) * 9);
+    for (i = 0; i < 3; i++)
+    {
+        inverse[4*i] = 1;
+    }
+    for (i = 0; i < 3; i++)
+    {
+        double mFactor = workingMatrix[4*i];
+        double rFactor;
+        if (mFactor == 0)
+        {
+            return 0;
+        }
+        rFactor = 1.0/mFactor;
+        // Prepare 1 on working matrix's main diagonal.
+        ALG_multiplyRow(workingMatrix, i, rFactor);
+        ALG_multiplyRow(inverse, i, rFactor);
+        // Do row operations on the working to zero out the elements not on
+        // the main diagonal.
+        for (j = 0; j < 3; j++)
+        {
+            double currentElement = workingMatrix[3*j + i];
+            if (i == j) continue;
+            ALG_performRowOperation(workingMatrix, j, i, -currentElement);
+            ALG_performRowOperation(inverse, j, i, -currentElement);
+        }
+    }
+    return 1;
+}
+
+void ALG_createCrossProductMatrix(double *cpMatrix, const double *vector)
+{
+    memset(cpMatrix, 0, sizeof(*cpMatrix) * 9);
+    cpMatrix[1] = -vector[2];
+    cpMatrix[2] = vector[1];
+    cpMatrix[3*1 + 2] = -vector[0];
+
+    cpMatrix[3*1 + 0] = vector[2];
+    cpMatrix[3*2 + 0] = -vector[1];
+    cpMatrix[3*2 + 1] = vector[0];
+}
 
 
 

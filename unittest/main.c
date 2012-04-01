@@ -78,7 +78,7 @@ typedef struct CollisionPointInTetraHedronTestCase
     int expected; // Zero or nonzero.
 } CollisionPointInTetraHedronTestCase;
 
-int getSupportVectorOfTriangle(const double *triangle, double *supportVector);
+int getSupportVectorOfTriangle(const double *triangle, double *supportVector, double *k, double *l);
 
 typedef struct CollisionTriangleSupportVectorTestCase
 {
@@ -87,7 +87,7 @@ typedef struct CollisionTriangleSupportVectorTestCase
     int expectedReturn;
 } CollisionTriangleSupportVectorTestCase;
 
-int getSupportVectorOfLineSegment(const double *endPoints, double *supportVector);
+int getSupportVectorOfLineSegment(const double *endPoints, double *supportVector, double *factor);
 
 typedef struct CollisionLineSegmentSupportTestCase
 {
@@ -95,6 +95,43 @@ typedef struct CollisionLineSegmentSupportTestCase
     double expectedVector[3];
     int expectedReturn;
 } CollisionLineSegmentSupportTestCase;
+
+typedef struct AlgebraMatrixInverseTestCase
+{
+    double matrix[9];
+    double expectedInverse[9];
+    char expectedReturn;
+} AlgebraMatrixInverseTestCase;
+
+AlgebraMatrixInverseTestCase matrixInverseTests[] =
+{
+    {
+        {
+            1, 2, 3,
+            4, 5, 6,
+            7, 8, 10
+        },
+        {
+            -0.666666666666666, -1.33333333333333, 1,
+            -0.666666666666669, 3.6666666666666, -2,
+            1, -2, 1
+        },
+        1
+    },
+    {
+        {
+            1, 2, 3,
+            4, 5, 6,
+            7, 8, 9
+        },
+        {
+            -0.666666666666666, -1.33333333333333, 1,
+            -0.666666666666669, 3.6666666666666, -2,
+            1, -2, 1
+        },
+        0
+    }
+};
 
 CollisionLineSegmentSupportTestCase lineSegmentSupportVectorTests[] =
 {
@@ -863,9 +900,10 @@ void runTriangleSupportVectorTests()
         int j;
         char passed = 1;
         double result[3];
+        double k, l;
         int retVal;
 
-        retVal = getSupportVectorOfTriangle(current->triangle, result);
+        retVal = getSupportVectorOfTriangle(current->triangle, result, &k, &l);
 
         if (!!retVal != !!current->expectedReturn)
         {
@@ -951,8 +989,9 @@ void runLineSegmentSupportVectorTests()
         char passed = 1;
         double result[3];
         int retVal;
+        double k;
 
-        retVal = getSupportVectorOfLineSegment(current->lineSegment, result);
+        retVal = getSupportVectorOfLineSegment(current->lineSegment, result, &k);
 
         if (!!retVal != !!current->expectedReturn)
         {
@@ -993,6 +1032,58 @@ void runLineSegmentSupportVectorTests()
     }
 }
 
+void runMatrixInverseTests()
+{
+    int N = sizeof (matrixInverseTests) / sizeof (matrixInverseTests[0]);
+    int i;
+
+    for (i = 0; i < N; i++)
+    {
+        AlgebraMatrixInverseTestCase *current = &matrixInverseTests[i];
+        int j;
+        char passed = 1;
+        double result[9];
+        int retVal;
+
+        retVal = ALG_invertMatrix(result, current->matrix);
+
+        if (!!retVal != !!current->expectedReturn)
+        {
+            passed = 0;
+        }
+        else
+        {
+            if (retVal)
+            {
+                for (j = 0; j < 9; j++)
+                {
+                    if (fabs(result[j] - current->expectedInverse[j]) > 1e-9)
+                    {
+                        passed = 0;
+                        break;
+                    }
+                }
+            }
+        }
+        // check
+        if (!passed)
+        {
+            printf("Matrix inverse test #%d FAILED!\n", i + 1);
+            printf("Matrix:\n");
+            dumpMatrix(current->matrix);
+            printf("Expected matrix: \n");
+            dumpMatrix(current->expectedInverse);
+            printf("Expected return: %d \n", !!current->expectedReturn);
+            printf("Result matrix: \n");
+            dumpMatrix(result);
+            printf("Actual return: %d \n", !!retVal);
+        }
+        else
+        {
+            printf("Matrix inverse test #%d passed.\n", i + 1);
+        }
+    }
+}
 //
 int main()
 {
@@ -1020,6 +1111,8 @@ int main()
     runTriangleSupportVectorTests();
     printf("Line segment support vector tests:\n");
     runLineSegmentSupportVectorTests();
+    printf("Matrix inverse tests:\n");
+    runMatrixInverseTests();
     printf("Testing finished.\n");
     fgetc(stdin);
     return 0;

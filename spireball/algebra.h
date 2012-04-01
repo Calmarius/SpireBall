@@ -157,5 +157,42 @@ int ALG_isNullVector(const double *v);
  *
  */
 void ALG_interpolateArray(double *result, const double *a, const double *b, int n, double iFactor);
+/**
+ * Multiplies one row with the given factor.
+ *
+ * @param [in,out] matrix an array with 9 elements.
+ * @param [in] rowId Zero-based row id can be 0, 1, 2.
+ * @param [in] factor The factor.
+ */
+void ALG_multiplyRow(double *matrix, char rowId, double factor);
+/**
+ * Adds the multiple of a row to another
+ *
+ * @param [in,out] matrix The 3×3 matrix (An array with 9 elements.)
+ * @param [in] dstRowId Zero-based index of the row that will be modified.
+ * @param [in] sourceRowId Index of the row whose mutiple will be used.
+ * @param [in] factor The multipying factor.
+ */
+void ALG_performRowOperation(double *matrix, char dstRowId, char sourceRowId, double factor);
+/**
+ * Calculates the inverse of a matrix.
+ *
+ * @param [in,out] inverse An array of 9 elements that will hold the inverse matrix in row major order.
+ * @param [in] matrix The source matrix
+ *
+ * @retval Non-zero The inverse is calculated.
+ * @retval Zero The given matrix is singular and has no inverse.
+ */
+char ALG_invertMatrix(double *inverse, const double *matrix);
+
+/**
+ * Creates a cross product matrix from a vector.
+ *
+ * a×b = Ab
+ *
+ * @param [in,out]  cpMatrix 9 element array, will hold the result.
+ * @param [in] vector The vector to create the matrix from.
+ */
+void ALG_createCrossProductMatrix(double *cpMatrix, const double *vector);
 
 #endif // ALG_Vector_H

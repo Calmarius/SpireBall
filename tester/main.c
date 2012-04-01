@@ -335,7 +335,7 @@ void shotRay()
     }
     if (bodyIndex >= 0)
     {
-        ALG_scale(forwardVector, 1);
+        ALG_scale(forwardVector, 10);
         applyImpulse(&world, &world.bodies[bodyIndex], camPosition, forwardVector);
     }
 }
@@ -653,18 +653,23 @@ int main ( int argc, char** argv )
 
         //applyImpulse(&world, &world.bodies[0], pointOfImpulse, impulse);
 
+
+/*        attributes.cuboidAttributes.width = 1;
+        attributes.cuboidAttributes.height = 1;
+        attributes.cuboidAttributes.depth = 1;
+        DYN_calculateMass(&attributes, 1);
         body.position[0] = 0;
         body.position[1] = 0;
-        body.position[2] = 100;
-        attributes.shape = DYN_BS_CUBOID;
-        attributes.cuboidAttributes.width = 3;
-        attributes.cuboidAttributes.height = 3;
-        attributes.cuboidAttributes.depth = 3;
-        DYN_calculateMass(&attributes, 1);
-        DYN_addBody(&world, &body, &attributes);
+        body.position[2] = -100;
+        body.velocity[2] = 1;
+        DYN_addBody(&world, &body, &attributes);*/
 
-/*        {
+        {
             int i,j,k;
+            attributes.cuboidAttributes.width = 3;
+            attributes.cuboidAttributes.height = 3;
+            attributes.cuboidAttributes.depth = 3;
+            DYN_calculateMass(&attributes, 1);
             for (i = 0; i < 3; i++)
             {
                 for (j = 0; j < 3; j++)
@@ -674,11 +679,12 @@ int main ( int argc, char** argv )
                         body.position[0] = 10 + 5*i;
                         body.position[1] = 10 + 5*j;
                         body.position[2] = 10 + 5*k;
+                        memcpy(body.velocity, nullVector, sizeof(nullVector));
                         DYN_addBody(&world, &body, &attributes);
                     }
                 }
             }
-        }*/
+        }
     }
 
     // initialize SDL video
@@ -703,7 +709,7 @@ int main ( int argc, char** argv )
     // Lock mouse in
 
     SDL_ShowCursor(0);
-    SDL_WM_GrabInput(SDL_GRAB_ON);
+    SDL_WM_GrabInput(SDL_GRAB_ON); //< Toggle this
 
     // Create display lists
 

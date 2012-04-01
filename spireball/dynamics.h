@@ -15,6 +15,7 @@ typedef struct DYN_BodyStaticAttributes
 {
     double mass; ///< Mass of the body.
     double intertiaTensor[9]; ///< Intertia tensor matrix.
+    double inverseInertiaTensor[9]; ///< Inverse of the inertia tensor matrix.
     DYN_Shape shape;
     union
     {
@@ -77,6 +78,10 @@ typedef struct DYN_Context
     int (*collidingBodyPairs)[2]; ///< Array that stores the indexes of the collidining bodies.
     int collidingPairCount; ///< Count of colliding pairs.
     int collidingPairsAllocated; ///< Allocated count of colliding pairs.
+    /**
+     * Counts the elapsed time.
+     */
+    double elapsedTime;
 } DYN_Context;
 
 /**
