@@ -235,6 +235,8 @@ void draw2D()
 }
 
 double *COL_queryLatestNearest();
+double *DYN_getLastCollisionPoint();
+double *DYN_getLastImpulse();
 
 void draw()
 {
@@ -282,10 +284,20 @@ void draw()
     glBegin(GL_LINES);
     {
         double *nearest = COL_queryLatestNearest();
+        double *lastImpulse = DYN_getLastImpulse();
+        double *lastCollisionPoint = DYN_getLastCollisionPoint();
         glColor3f(1, 0, 0);
         glVertex3f(nearest[0], nearest[1], nearest[2]);
         glColor3f(0, 1, 0);
         glVertex3f(nearest[3], nearest[4], nearest[5]);
+        glColor3f(1, 1, 0);
+        glVertex3f(lastCollisionPoint[0], lastCollisionPoint[1], lastCollisionPoint[2]);
+        glColor3f(1, 1, 0);
+        glVertex3f(
+            lastCollisionPoint[0] + lastCollisionPoint[0] * 20,
+            lastCollisionPoint[1] + lastCollisionPoint[1] * 20,
+            lastCollisionPoint[2] + lastCollisionPoint[2] * 20
+        );
     }
     glEnd();
 
@@ -670,11 +682,11 @@ int main ( int argc, char** argv )
             attributes.cuboidAttributes.height = 3;
             attributes.cuboidAttributes.depth = 3;
             DYN_calculateMass(&attributes, 1);
-            for (i = 0; i < 3; i++)
+            for (i = 0; i < 1; i++)
             {
-                for (j = 0; j < 3; j++)
+                for (j = 0; j < 1; j++)
                 {
-                    for (k = 0; k < 3; k++)
+                    for (k = 0; k < 1; k++)
                     {
                         body.position[0] = 10 + 5*i;
                         body.position[1] = 10 + 5*j;

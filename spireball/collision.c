@@ -288,17 +288,17 @@ int isConvexBodiesIntersect(
     double simplexVertices[12];
     char simplexVertexIndexPairs[4][2]; // Stores the pairs of indices of the vertices the simplex vertices is calculated from.
     int simplexVertexCount = 0;
-    double supportVector[3];
-    char alreadyInspected[bodyAVertexCount][bodyBVertexCount];
+    double supportVector[3] = {0};
+    double prevSupportVector[3] = {0};
+//    char alreadyInspected[bodyAVertexCount][bodyBVertexCount];
     double interpolationFactors[2];
 
     assert(bodyAVertexCount > 0);
     assert(bodyBVertexCount > 0);
 
-    memset(alreadyInspected, 0, bodyAVertexCount * bodyBVertexCount);
+//    memset(alreadyInspected, 0, bodyAVertexCount * bodyBVertexCount);
     // Set starting state.
     ALG_getPointToPointVector(simplexVertices, bodyBVertices, bodyAVertices);
-    alreadyInspected[0][0] = 1;
     simplexVertexCount = 1;
     simplexVertexIndexPairs[0][0] = 0;
     simplexVertexIndexPairs[0][1] = 0;
@@ -306,6 +306,7 @@ int isConvexBodiesIntersect(
     for(;;)
     {
         char remainingVertices[4]; //
+        memcpy(prevSupportVector, supportVector, sizeof(prevSupportVector));
         if (getSupportVectorOfSimplex(
             simplexVertices,
             &simplexVertexCount,
@@ -373,37 +374,40 @@ int isConvexBodiesIntersect(
                 }
             }
             memcpy(minVertex, &bodyBVertices[3*minIndex], sizeof(double) * 3);
-            if (alreadyInspected[maxIndex][minIndex])
             {
-                // We would add a vertex that's already inspected.
-                // This mean the two bodies does not intersect.
-                // Calculate the two nearest points.
-                int i;
-                double refPoint[3];
-                double pointA[3];
-                memcpy(
-                    refPoint,
-                    &bodyAVertices[3 * simplexVertexIndexPairs[0][0]],
-                    sizeof(refPoint)
-                );
-                memcpy(pointA, refPoint, sizeof(pointA));
-                for (i = 1; i < simplexVertexCount; i++)
+                double difference[3];
+                ALG_getPointToPointVector(difference, prevSupportVector, supportVector);
+                if (ALG_dotProduct(difference, difference) < 1e-6)
                 {
-                    double sideVector[3];
-                    ALG_getPointToPointVector(
-                        sideVector,
+                    // We would add a vertex that's already inspected.
+                    // This mean the two bodies does not intersect.
+                    // Calculate the two nearest points.
+                    int i;
+                    double refPoint[3];
+                    double pointA[3];
+                    memcpy(
                         refPoint,
-                        &bodyAVertices[3 * simplexVertexIndexPairs[i][0]]
+                        &bodyAVertices[3 * simplexVertexIndexPairs[0][0]],
+                        sizeof(refPoint)
                     );
-                    ALG_scale(sideVector, interpolationFactors[i - 1]);
-                    ALG_translate(pointA, sideVector);
+                    memcpy(pointA, refPoint, sizeof(pointA));
+                    for (i = 1; i < simplexVertexCount; i++)
+                    {
+                        double sideVector[3];
+                        ALG_getPointToPointVector(
+                            sideVector,
+                            refPoint,
+                            &bodyAVertices[3 * simplexVertexIndexPairs[i][0]]
+                        );
+                        ALG_scale(sideVector, interpolationFactors[i - 1]);
+                        ALG_translate(pointA, sideVector);
+                    }
+                    memcpy(&nearestPoints[0], pointA, 3 * sizeof(*nearestPoints));
+                    memcpy(&nearestPoints[3], pointA, 3 * sizeof(*nearestPoints));
+                    ALG_translate(&nearestPoints[3], supportVector);
+                    return 0;
                 }
-                memcpy(&nearestPoints[0], pointA, 3 * sizeof(*nearestPoints));
-                memcpy(&nearestPoints[3], pointA, 3 * sizeof(*nearestPoints));
-                ALG_translate(&nearestPoints[3], supportVector);
-                return 0;
             }
-            alreadyInspected[maxIndex][minIndex] = 1;
             assert(simplexVertexCount < 4);
             ALG_getPointToPointVector(minkowskiDifference, minVertex, maxVertex);
             memcpy(&simplexVertices[3*simplexVertexCount], minkowskiDifference, sizeof(double) * 3);
@@ -501,7 +505,9 @@ char COL_collide(DYN_Body *a, DYN_Body *b, double *nearestPoints)
     {
         a->colliding = 1;
         b->colliding = 1;
+        memcpy(COL_latestNearestPoints, nearestPoints, sizeof(COL_latestNearestPoints));
         return 1;
     }
+    memcpy(COL_latestNearestPoints, nearestPoints, sizeof(COL_latestNearestPoints));
     return 0;
 }

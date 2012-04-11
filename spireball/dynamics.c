@@ -261,7 +261,14 @@ void clearCollidingPairs(DYN_Context *context)
     context->collidingPairCount = 0;
 }
 
-char resolveCollision
+typedef enum
+{
+    DYN_COLLIDED,
+    DYN_SEPARATING,
+    DYN_STICKTOGETHER
+} CollisionResult;
+
+CollisionResult resolveCollision
 (
     DYN_Context *context,
     DYN_Body *a,
@@ -280,6 +287,9 @@ char resolveCollision
     double impulseStrength;
     double elasticity = 0.1;
     double normalComponent;
+    double tangentialComponent;
+    const double CRITICAL_SLOW_SPEED = 0.001;
+    char isSeparatingSlowly;
 
 
     // Get a normalized unit vector
@@ -302,11 +312,37 @@ char resolveCollision
         collisionPointVelocityB
     );
     normalComponent = ALG_dotProduct(normal, relativeCollisionPointVelocity);
+    tangentialComponent = sqrt(
+        ALG_getVectorLength(relativeCollisionPointVelocity) -
+        normalComponent*normalComponent
+    );
+    isSeparatingSlowly = (normalComponent * -elasticity) < CRITICAL_SLOW_SPEED;
+    if (isSeparatingSlowly)
+    {
+        fprintf(DYN_log, "The two bodies are separating slowly!\n");
+    }
     fprintf(DYN_log, "Normal component of relative speed: %g\n", normalComponent);
+    fprintf(
+        DYN_log,
+        "Tangential component of relative speed: %g\n",
+        tangentialComponent
+    );
+/*    if (tangentialComponent != 0)
+    {
+        if (fabs(normalComponent) < CRITICAL_SLOW_SPEED)
+        {
+            // Too slow relative normal component may cause the simulation get stuck.
+            // In this case, cheat a bit: apply bigger impulse than needed.
+            elasticity = 10 * CRITICAL_SLOW_SPEED / fabs(normalComponent);
+            // With this elastivity the ratio of the normal and tangential will be at least the
+            // arbitrarily chosen critical ratio.
+            fprintf(DYN_log, "Elasticity risen to: %g due to small normal component\n", elasticity);
+        }
+    }*/
     if (normalComponent > 0)
     {
         // In this case, the two bodies separating, they cannot collide.
-        return 0;
+        return DYN_SEPARATING;
     }
     // Calculate the strength of the impulse
     {
@@ -360,10 +396,23 @@ char resolveCollision
     applyImpulse(context, b, collisionPoint, normal);
     ALG_scale(normal, -1);
     applyImpulse(context, a, collisionPoint, normal);
-    return 1;
+    if (isSeparatingSlowly)
+    {
+        return DYN_STICKTOGETHER;
+    }
+    else
+    {
+        return DYN_COLLIDED;
+    }
 }
 
 char simStopped = 0;
+
+double DYN_lastCollisionPoint[3];
+double DYN_lastImpulse[3];
+
+double *DYN_getLastImpulse() {return DYN_lastImpulse;}
+double *DYN_getLastCollisionPoint() {return DYN_lastCollisionPoint;}
 
 void DYN_stepWorld(DYN_Context *context)
 {
@@ -441,7 +490,7 @@ void DYN_stepWorld(DYN_Context *context)
                     {
                         double tmp[3];
                         ALG_getPointToPointVector(tmp, nearestPoints, &nearestPoints[3]);
-                        if (ALG_dotProduct(tmp, tmp) < 1e-4)
+                        if ((ALG_dotProduct(tmp, tmp) < 1e-6) || (fabs(upper-lower) < 1e-6))
                         {
                             // The two bodies are near each other.
                             if (middle <= minTime)
@@ -493,6 +542,8 @@ void DYN_stepWorld(DYN_Context *context)
                 currentCollisionPoint,
                 currentImpulseVector
             );
+            memcpy(DYN_lastCollisionPoint, currentCollisionPoint, sizeof(DYN_lastCollisionPoint));
+            memcpy(DYN_lastImpulse, currentImpulseVector, sizeof(DYN_lastImpulse));
             fprintf(DYN_log, "==============================\n");
             //
             clearCollidingPairs(context);
