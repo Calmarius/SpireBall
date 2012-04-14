@@ -219,46 +219,47 @@ void DYN_initialize(DYN_Context *context, double timeStep)
     context->bodies = 0;
     context->bodiesAllocated = 0;
     context->timeStep = timeStep;
-    context->collidingPairsAllocated = 0;
-    context->collidingPairCount = 0;
     context->elapsedTime = 0;
     if (!DYN_log)
     {
         DYN_log = fopen("log.txt", "wt");
     }
+    DYNA_initialize(&context->nonCollidingPairs, sizeof( int[2] ));
+    DYNA_initialize(&context->collidingPairs, sizeof( int[2] ));
 }
 
 void DYN_deinitialize(DYN_Context *context)
 {
     free(context->bodies);
     free(context->staticAttributes);
+    DYNA_deinitialize(&context->nonCollidingPairs);
+    DYNA_deinitialize(&context->collidingPairs);
 }
 
 void addCollidingPair(DYN_Context *context, int a, int b)
 {
-    if (context->collidingPairCount == context->collidingPairsAllocated)
-    {
-        if (!context->collidingPairsAllocated)
-        {
-            context->collidingPairsAllocated = 100;
-        }
-        else
-        {
-            context->collidingPairsAllocated <<= 1;
-        }
-        context->collidingBodyPairs = realloc(
-            context->collidingBodyPairs,
-            context->collidingPairsAllocated * sizeof(*context->collidingBodyPairs)
-        );
-    }
-    context->collidingBodyPairs[context->collidingPairCount][0] = a;
-    context->collidingBodyPairs[context->collidingPairCount][1] = b;
-    context->collidingPairCount++;
+    int tmp[2];
+    tmp[0] = a;
+    tmp[1] = b;
+    DYNA_add(&context->collidingPairs, tmp);
+}
+
+void addNonCollidingPair(DYN_Context *context, int a, int b)
+{
+    int tmp[2];
+    tmp[0] = a;
+    tmp[1] = b;
+    DYNA_add(&context->nonCollidingPairs, tmp);
+}
+
+void clearNonCollidingPairs(DYN_Context *context)
+{
+    DYNA_clear(&context->nonCollidingPairs);
 }
 
 void clearCollidingPairs(DYN_Context *context)
 {
-    context->collidingPairCount = 0;
+    DYNA_clear(&context->collidingPairs);
 }
 
 typedef enum
@@ -457,12 +458,14 @@ void DYN_stepWorld(DYN_Context *context)
             // There was collision
             // STEP 3: Find earliest collision
             int i;
+            int cpCount = DYNA_getLength(&context->collidingPairs);
+            int (*collidingPairs)[2] = DYNA_getStorage(&context->collidingPairs);
             // Find the earliest collision.
-            assert(context->collidingPairCount);
-            for (i = 0; i < context->collidingPairCount; i++)
+            assert(cpCount);
+            for (i = 0; i < cpCount; i++)
             {
-                DYN_Body *a = &context->bodies[context->collidingBodyPairs[i][0]];
-                DYN_Body *b = &context->bodies[context->collidingBodyPairs[i][1]];
+                DYN_Body *a = &context->bodies[collidingPairs[i][0]];
+                DYN_Body *b = &context->bodies[collidingPairs[i][1]];
                 double lower = 0;
                 double upper = remainingTime;
                 int stuckCtr2 = 0;
@@ -496,8 +499,8 @@ void DYN_stepWorld(DYN_Context *context)
                             if (middle <= minTime)
                             {
                                 minTime = middle;
-                                earlyAIndex = context->collidingBodyPairs[i][0];
-                                earlyBIndex = context->collidingBodyPairs[i][1];
+                                earlyAIndex = collidingPairs[i][0];
+                                earlyBIndex = collidingPairs[i][1];
                                 memcpy(currentImpulseVector, tmp, sizeof(currentImpulseVector));
                                 memcpy(currentCollisionPoint, nearestPoints, sizeof(currentCollisionPoint));
                             }
@@ -535,18 +538,25 @@ void DYN_stepWorld(DYN_Context *context)
             assert(earlyAIndex >= 0);
             assert(earlyBIndex >= 0);
             // Resolve the collision
-             resolveCollision(
-                context,
-                &context->bodies[earlyAIndex],
-                &context->bodies[earlyBIndex],
-                currentCollisionPoint,
-                currentImpulseVector
-            );
+            {
+                CollisionResult result = resolveCollision(
+                    context,
+                    &context->bodies[earlyAIndex],
+                    &context->bodies[earlyBIndex],
+                    currentCollisionPoint,
+                    currentImpulseVector
+                );
+                if (result == DYN_STICKTOGETHER)
+                {
+                    addNonCollidingPair(context, earlyAIndex, earlyBIndex);
+                }
+            }
             memcpy(DYN_lastCollisionPoint, currentCollisionPoint, sizeof(DYN_lastCollisionPoint));
             memcpy(DYN_lastImpulse, currentImpulseVector, sizeof(DYN_lastImpulse));
             fprintf(DYN_log, "==============================\n");
             //
             clearCollidingPairs(context);
+            clearNonCollidingPairs(context);
             // Continue the simulation
             remainingTime -= minTime;
         }

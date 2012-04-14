@@ -38,6 +38,10 @@
 			<Option compilerVar="CC" />
 		</Unit>
 		<Unit filename="algebra.h" />
+		<Unit filename="avltree.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="avltree.h" />
 		<Unit filename="collision.c">
 			<Option compilerVar="CC" />
 		</Unit>
@@ -46,6 +50,10 @@
 			<Option compilerVar="CC" />
 		</Unit>
 		<Unit filename="dynamics.h" />
+		<Unit filename="dynarray.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="dynarray.h" />
 		<Unit filename="spireball.c">
 			<Option compilerVar="CC" />
 		</Unit>

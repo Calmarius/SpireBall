@@ -1,6 +1,8 @@
 #ifndef DYNAMICS_H
 #define DYNAMICS_H
 
+#include "dynarray.h"
+
 /**
  * An enum of the possible shapes.
  */
@@ -75,13 +77,18 @@ typedef struct DYN_Context
     int bodyCount; ///< Count of bodies.
     int bodiesAllocated; ///< Allocated space for the bodies.
     DYN_BodyStaticAttributes *staticAttributes; ///< Array that stores the the static attributes of the body.
-    int (*collidingBodyPairs)[2]; ///< Array that stores the indexes of the collidining bodies.
-    int collidingPairCount; ///< Count of colliding pairs.
-    int collidingPairsAllocated; ///< Allocated count of colliding pairs.
     /**
      * Counts the elapsed time.
      */
     double elapsedTime;
+    /**
+     * Colliding pairs
+     */
+     DYNA_Array collidingPairs;
+    /**
+     * Noncolliding pairs
+     */
+     DYNA_Array nonCollidingPairs;
 } DYN_Context;
 
 /**

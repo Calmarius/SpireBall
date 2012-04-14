@@ -16,6 +16,9 @@
         - Collision detection part.
             - Do convex body collision. - DONE!
             - When does two trimeshes collide?
+            - Resolve stucking simulation
+                - Use mark stucked pairs so they won't collide.
+                - Implement EPA to seperate these interpenetrating bodies.
         - Optimize calculations
             - How to handle many objects.
                 - Broad phase collision detection.

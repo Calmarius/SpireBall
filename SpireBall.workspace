@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
 <CodeBlocks_workspace_file>
 	<Workspace title="Workspace">
-		<Project filename="spireball/spireball.cbp" />
+		<Project filename="spireball/spireball.cbp" active="1" />
 		<Project filename="unittest/unittest.cbp">
 			<Depends filename="spireball/spireball.cbp" />
 		</Project>
-		<Project filename="tester/tester.cbp" active="1">
+		<Project filename="tester/tester.cbp">
 			<Depends filename="spireball/spireball.cbp" />
 		</Project>
 	</Workspace>

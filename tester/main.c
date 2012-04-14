@@ -721,7 +721,7 @@ int main ( int argc, char** argv )
     // Lock mouse in
 
     SDL_ShowCursor(0);
-    SDL_WM_GrabInput(SDL_GRAB_ON); //< Toggle this
+    //SDL_WM_GrabInput(SDL_GRAB_ON); //< Toggle this
 
     // Create display lists
 
