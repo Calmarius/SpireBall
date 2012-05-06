@@ -44,8 +44,10 @@ void *DYNA_getStorage(DYNA_Array *array);
  *
  * @param [in,out] array The array.
  * @param [in] from pointer to the element to add.
+ *
+ * @return The address of the stored element in the array.
  */
-void DYNA_add(DYNA_Array *array, void *element);
+void *DYNA_add(DYNA_Array *array, const void *element);
 
 /**
  * Clears an element from the array.

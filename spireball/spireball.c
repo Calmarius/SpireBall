@@ -10,15 +10,16 @@
         - Body movement - DONE!
         - Body dynamics
             - Impulses - DONE!
-            - Forces
-        - Dynamics part
-            - Code the calculations when force acts on the body.
+        - Dynamics part - DONE!
+            - Code the calculations when impulse acts on the body. - DONE!
         - Collision detection part.
             - Do convex body collision. - DONE!
             - When does two trimeshes collide?
             - Resolve stucking simulation
-                - Use mark stucked pairs so they won't collide.
+                - Use mark stucked pairs so they won't collide. - DONE!
                 - Implement EPA to seperate these interpenetrating bodies.
+                    - Test the EPA algorithm.
+                        - Make EPA capable to run, when starting simplex cannot be given.
         - Optimize calculations
             - How to handle many objects.
                 - Broad phase collision detection.

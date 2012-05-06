@@ -5,6 +5,8 @@
 #include "collision.h"
 #include "dynamics.h"
 #include "algebra.h"
+#include "avltree.h"
+#include "dynarray.h"
 
 /**
  * Determines if point is inside a tetrahedron
@@ -110,8 +112,8 @@ int getSupportVectorOfTriangle(const double *triangle, double *supportVector, do
     }
     // calculate the support vector
     ALG_scale(supportVector, coefficients[2]);
-    *k = coefficients[0];
-    *l = coefficients[1];
+    if (k) *k = coefficients[0];
+    if (l) *l = coefficients[1];
     return 1;
 }
 
@@ -270,6 +272,108 @@ int getSupportVectorOfSimplex(
 }
 
 /**
+ * Gets the vertex which is the farthest (or nearest) in the given direction.
+ *
+ * @param [in] vertices Vertices (series of 3 doubles per vertex)
+ * @param [in] vertexCount Count of vertices
+ * @param [in] direction The direction of the query.
+ * @param [in] nearest When it's nonzero, it will find the nearest in the given
+ *      direction instead of the farthest.
+ * @param [out] vertexIndex The index of the vertex which is the farthest (or nearest) .
+ *      It can be NULL, when this info is not needed.
+ * @param [in,out] vertex The coordinates of the vertex which is the farthest (or nearest) .
+ *      It can be NULL, when this info is not needed.
+ */
+void getExtremePointOfVertices(
+    const double *vertices,
+    int vertexCount,
+    const double *direction,
+    char nearest,
+    int *vertexIndex,
+    double *vertex
+)
+{
+    int maxIndex;
+    int i;
+    double maxProduct;
+
+    if (nearest)
+    {
+        for (i = 0; i < vertexCount; i++)
+        {
+            double currentProduct = ALG_dotProduct(direction, &vertices[3*i]);
+            if (!i || (currentProduct < maxProduct))
+            {
+                maxProduct = currentProduct;
+                maxIndex = i;
+            }
+        }
+    }
+    else
+    {
+        for (i = 0; i < vertexCount; i++)
+        {
+            double currentProduct = ALG_dotProduct(direction, &vertices[3*i]);
+            if (!i || (currentProduct > maxProduct))
+            {
+                maxProduct = currentProduct;
+                maxIndex = i;
+            }
+        }
+    }
+    if (vertex)
+    {
+        memcpy(vertex, &vertices[3*maxIndex], sizeof(double) * 3);
+    }
+    if (vertexIndex) *vertexIndex = maxIndex;
+}
+
+/**
+ * Gets the extreme vertex of the Minkowski difference of the two vertex
+ * sets in a direction
+ *
+ * @param [in] verticesA, vertexACount Vertices of A body.
+ * @param [in] verticesB, vertexBCount Vertices of the B body.
+ * @param [in] direction The direction.
+ * @param [out] indexA, indexB The index of the chosen vertex of the two bodies.
+ *      These parameters can be NULL.
+ * @param [out] vertex The vertex on the Minkowski difference.
+ */
+void getExtremePointOfMinkowskiDifference(
+    const double *verticesA,
+    int vertexACount,
+    const double *verticesB,
+    int vertexBCount,
+    const double *direction,
+    int *indexA,
+    int *indexB,
+    double *vertex
+)
+{
+    double maxVertex[3];
+    double minVertex[3];
+
+    getExtremePointOfVertices(
+        verticesA,
+        vertexACount,
+        direction,
+        0,
+        indexA,
+        maxVertex
+    );
+    getExtremePointOfVertices(
+        verticesB,
+        vertexBCount,
+        direction,
+        1,
+        indexB,
+        minVertex
+    );
+    ALG_getPointToPointVector(vertex, minVertex, maxVertex);
+
+}
+
+/**
  * Calculates if two convex bodies intersect. (See GJK algorithm)
  *
  * @param [in] bodyAVertices, bodyBVertices The vertices of the two body, in arbitrary order.
@@ -282,7 +386,8 @@ int isConvexBodiesIntersect(
     int bodyAVertexCount,
     const double *bodyBVertices,
     int bodyBVertexCount,
-    double *nearestPoints
+    double *nearestPoints,
+    double *lastSimplex
 )
 {
     double simplexVertices[12];
@@ -290,13 +395,11 @@ int isConvexBodiesIntersect(
     int simplexVertexCount = 0;
     double supportVector[3] = {0};
     double prevSupportVector[3] = {0};
-//    char alreadyInspected[bodyAVertexCount][bodyBVertexCount];
     double interpolationFactors[2];
 
     assert(bodyAVertexCount > 0);
     assert(bodyBVertexCount > 0);
 
-//    memset(alreadyInspected, 0, bodyAVertexCount * bodyBVertexCount);
     // Set starting state.
     ALG_getPointToPointVector(simplexVertices, bodyBVertices, bodyAVertices);
     simplexVertexCount = 1;
@@ -316,6 +419,10 @@ int isConvexBodiesIntersect(
         )
         {
             // simplex was a tetrahedron an origin was in the tetrahedron. This means intersection.
+            if (lastSimplex)
+            {
+                memcpy(lastSimplex, simplexVertices, 12 * sizeof(*lastSimplex));
+            }
             return 1;
         }
         {
@@ -336,80 +443,64 @@ int isConvexBodiesIntersect(
         }
         // Find the farthest point of the Minkowski difference in the supportVector's direction.
         {
-            double maxProduct;
-            double minProduct;
-            int i;
-            double maxVertex[3]; // The farthest point of the A body.
-            double minVertex[3];  // The nearest point of the B body.
             int maxIndex; // index of the maximum vertex
             int minIndex; // index of the minimum vertex
             double minkowskiDifference[3];
             double svLength = ALG_dotProduct(supportVector, supportVector);
-
             if (svLength < 1e-9)
             {
-                // support vector is null vector, it's sure that the minkowski difference touches the
-                // origin, intersection assured.
                 return 1;
             }
 
-            for (i = 0; i < bodyAVertexCount; i++)
-            {
-                double currentProduct = ALG_dotProduct(supportVector, &bodyAVertices[3*i]);
-                if (!i || (currentProduct > maxProduct))
-                {
-                    maxProduct = currentProduct;
-                    maxIndex = i;
-                }
-            }
-            memcpy(maxVertex, &bodyAVertices[3*maxIndex], sizeof(double) * 3);
-
-            for (i = 0; i < bodyBVertexCount; i++)
-            {
-                double currentProduct = ALG_dotProduct(supportVector, &bodyBVertices[3*i]);
-                if (!i || (currentProduct < minProduct))
-                {
-                    minProduct = currentProduct;
-                    minIndex = i;
-                }
-            }
-            memcpy(minVertex, &bodyBVertices[3*minIndex], sizeof(double) * 3);
+            // Calculate the farthest point of the A body.
+            getExtremePointOfMinkowskiDifference(
+                bodyAVertices,
+                bodyAVertexCount,
+                bodyBVertices,
+                bodyBVertexCount,
+                supportVector,
+                &maxIndex,
+                &minIndex,
+                minkowskiDifference
+            );
             {
                 double difference[3];
                 ALG_getPointToPointVector(difference, prevSupportVector, supportVector);
                 if (ALG_dotProduct(difference, difference) < 1e-6)
                 {
                     // We would add a vertex that's already inspected.
-                    // This mean the two bodies does not intersect.
+                    // This maymean the two bodies does not intersect.
                     // Calculate the two nearest points.
-                    int i;
-                    double refPoint[3];
-                    double pointA[3];
-                    memcpy(
-                        refPoint,
-                        &bodyAVertices[3 * simplexVertexIndexPairs[0][0]],
-                        sizeof(refPoint)
-                    );
-                    memcpy(pointA, refPoint, sizeof(pointA));
-                    for (i = 1; i < simplexVertexCount; i++)
+                    if (nearestPoints)
                     {
-                        double sideVector[3];
-                        ALG_getPointToPointVector(
-                            sideVector,
+                        int i;
+                        double refPoint[3];
+                        double pointA[3];
+                        memcpy(
                             refPoint,
-                            &bodyAVertices[3 * simplexVertexIndexPairs[i][0]]
+                            &bodyAVertices[3 * simplexVertexIndexPairs[0][0]],
+                            sizeof(refPoint)
                         );
-                        ALG_scale(sideVector, interpolationFactors[i - 1]);
-                        ALG_translate(pointA, sideVector);
+                        memcpy(pointA, refPoint, sizeof(pointA));
+                        for (i = 1; i < simplexVertexCount; i++)
+                        {
+                            double sideVector[3];
+                            ALG_getPointToPointVector(
+                                sideVector,
+                                refPoint,
+                                &bodyAVertices[3 * simplexVertexIndexPairs[i][0]]
+                            );
+                            ALG_scale(sideVector, interpolationFactors[i - 1]);
+                            ALG_translate(pointA, sideVector);
+                        }
+                        memcpy(&nearestPoints[0], pointA, 3 * sizeof(*nearestPoints));
+                        memcpy(&nearestPoints[3], pointA, 3 * sizeof(*nearestPoints));
+                        ALG_translate(&nearestPoints[3], supportVector);
                     }
-                    memcpy(&nearestPoints[0], pointA, 3 * sizeof(*nearestPoints));
-                    memcpy(&nearestPoints[3], pointA, 3 * sizeof(*nearestPoints));
-                    ALG_translate(&nearestPoints[3], supportVector);
                     return 0;
                 }
             }
             assert(simplexVertexCount < 4);
-            ALG_getPointToPointVector(minkowskiDifference, minVertex, maxVertex);
             memcpy(&simplexVertices[3*simplexVertexCount], minkowskiDifference, sizeof(double) * 3);
             simplexVertexIndexPairs[simplexVertexCount][0] = maxIndex;
             simplexVertexIndexPairs[simplexVertexCount][1] = minIndex;
@@ -486,9 +577,181 @@ double *COL_queryLatestNearest()
     return COL_latestNearestPoints;
 }
 
-char COL_collide(DYN_Body *a, DYN_Body *b, double *nearestPoints)
+typedef struct
 {
-    double verticesA[24];
+    double vertices[9];
+    double supportVector[3];
+    double squaredDistance;
+} PolytopeSide;
+
+static int polytopeSideComparer(void *a, void *b)
+{
+    PolytopeSide *aside = (PolytopeSide*)a;
+    PolytopeSide *bside = (PolytopeSide*)b;
+    if (aside->squaredDistance < bside->squaredDistance) return -1;
+    if (aside->squaredDistance > bside->squaredDistance) return 1;
+    return 0;
+}
+
+/**
+ * Performs EPA algorithm.
+ *
+ * @note The two bodies must intersect.
+ *
+ * @param [in] bodyAVertices, bodyAVertexCount The vertices of the body A.
+ * @param [in] bodyBVertices, bodyBVertexCount The vertices of the body B.
+ * @param [in] startingSimplex The vertices of the starting tetrahedron [x, y, z, x, y, z, ...].
+ *      Origin must be inside.
+ * @param [in,out] penetrationVector The penetration vector, user provided array of 3 doubles.
+ *
+ */
+void getPenetrationVector(
+    const double *bodyAVertices,
+    int bodyAVertexCount,
+    const double *bodyBVertices,
+    int bodyBVertexCount,
+    const double *startingSimplex,
+    double *penetrationVector
+)
+{
+    double nullVector[3] = {0, 0, 0};
+    AVL_Tree treeIndex;
+    DYNA_Array dynArray;
+
+    assert(isPointInTetraHedron(nullVector, startingSimplex));
+    AVL_initialize(&treeIndex, polytopeSideComparer);
+    DYNA_initialize(&dynArray, sizeof(PolytopeSide));
+    // Add the initial triangles
+    {
+        int i,j;
+        // 4 triangles
+        for (i = 0; i < 4; i++)
+        {
+            int k = 0;
+            PolytopeSide tmp;
+            // Get a triange by taking the vertices of the tetraheadron, except the i-th.
+            for (j = 0; j < 4; j++)
+            {
+                if (i == j) continue;
+                memcpy(
+                    &tmp.vertices[k * 3],
+                    &startingSimplex[j * 3],
+                    3 * sizeof(double)
+                );
+                k++;
+            }
+            if (getSupportVectorOfTriangle(tmp.vertices, tmp.supportVector, 0, 0))
+            {
+                void *added;
+
+                tmp.squaredDistance = ALG_dotProduct(
+                    tmp.supportVector,
+                    tmp.supportVector
+                );
+                added = DYNA_add(&dynArray, &tmp);
+                AVL_add(&treeIndex, added, 0);
+            }
+        }
+    }
+    // Do EPA here.
+    for(;;)
+    {
+        // Get the face which is nearest to the origin.
+        AVL_Node *least = AVL_getLeast(&treeIndex);
+        PolytopeSide *pside = AVL_getKey(least);
+        double newVertex[3];
+        PolytopeSide newSide;
+        int i, j;
+
+        // Use its support vector to calculate and add a new vertex.
+        getExtremePointOfMinkowskiDifference(
+            bodyAVertices,
+            bodyAVertexCount,
+            bodyBVertices,
+            bodyBVertexCount,
+            pside->supportVector,
+            0,
+            0,
+            newVertex
+        );
+
+        // Check if its near the current triangle's vertices
+        for (i = 0; i < 3; i++)
+        {
+            double tmp[3];
+            ALG_getPointToPointVector(tmp, newVertex, &pside->vertices[3 * i]);
+            if (ALG_dotProduct(tmp, tmp) < 1e-6)
+            {
+                // Yes the vertex is nearby. We finished.
+                memcpy(
+                    penetrationVector,
+                    pside->supportVector,
+                    sizeof(pside->supportVector)
+                );
+                goto cleanup;
+            }
+        }
+        // Add new triangles to the index.
+        // 3 new triangles.
+        for (i = 0; i < 3; i++)
+        {
+            int k = 0;
+            // 2 vertex from the old triangle
+            for (j = 0; j < 3; j++)
+            {
+                if (i == j) continue;
+                memcpy(&newSide.vertices[3 * k], &pside->vertices[3 * j], 3 * sizeof(double));
+                k++;
+            }
+            // plus the new vertex
+            memcpy(&newSide.vertices[6], newVertex, 3 * sizeof(double));
+            // Calculate support vector on these triangles
+            if (getSupportVectorOfTriangle(newSide.vertices, newSide.supportVector, 0, 0))
+            {
+                void *added;
+                newSide.squaredDistance = ALG_dotProduct(
+                    newSide.supportVector,
+                    newSide.supportVector
+                );
+                added = DYNA_add(&dynArray, &newSide);
+                AVL_add(&treeIndex, added, 0);
+            }
+        }
+        // Remove the checked triangle
+        AVL_delete(&treeIndex, pside);
+    }
+cleanup:
+    AVL_deinitialize(&treeIndex);
+    DYNA_deinitialize(&dynArray);
+}
+
+void COL_getPenetrationVector(
+    DYN_Body *a,
+    DYN_Body *b,
+    const double *startingSimplex,
+    double *penetrationVector
+)
+{
+    double verticesA[24]; //< Not fool proof
+    double verticesB[24];
+    int vertexCountA, vertexCountB;
+
+    getBodyVertices(a, verticesA, &vertexCountA);
+    getBodyVertices(b, verticesB, &vertexCountB);
+
+    getPenetrationVector(
+        verticesA,
+        vertexCountA,
+        verticesB,
+        vertexCountB,
+        startingSimplex,
+        penetrationVector
+    );
+}
+
+char COL_collide(DYN_Body *a, DYN_Body *b, double *nearestPoints, double *lastSimplex)
+{
+    double verticesA[24]; //< Not fool proof
     double verticesB[24];
     int vertexCountA, vertexCountB;
 
@@ -500,14 +763,30 @@ char COL_collide(DYN_Body *a, DYN_Body *b, double *nearestPoints)
         vertexCountA,
         verticesB,
         vertexCountB,
-        nearestPoints)
+        nearestPoints,
+        lastSimplex)
     )
     {
         a->colliding = 1;
         b->colliding = 1;
-        memcpy(COL_latestNearestPoints, nearestPoints, sizeof(COL_latestNearestPoints));
+        if (nearestPoints)
+        {
+            memcpy(
+                COL_latestNearestPoints,
+                nearestPoints,
+                sizeof(COL_latestNearestPoints)
+            );
+        }
         return 1;
     }
-    memcpy(COL_latestNearestPoints, nearestPoints, sizeof(COL_latestNearestPoints));
+    if (nearestPoints)
+    {
+        memcpy(
+            COL_latestNearestPoints,
+            nearestPoints,
+            sizeof(COL_latestNearestPoints)
+        );
+    }
     return 0;
 }
+

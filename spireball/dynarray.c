@@ -35,7 +35,7 @@ void enlarge(DYNA_Array *array)
     array->storage = realloc(array->storage, array->allocated * array->elementSize);
 }
 
-void DYNA_add(DYNA_Array *array, void *element)
+void *DYNA_add(DYNA_Array *array, const void *element)
 {
     if (array->count == array->allocated)
     {
@@ -47,6 +47,7 @@ void DYNA_add(DYNA_Array *array, void *element)
         array->elementSize
     );
     array->count++;
+    return array->storage + (array->count - 1) * array->elementSize;
 }
 
 void DYNA_clear(DYNA_Array *array)

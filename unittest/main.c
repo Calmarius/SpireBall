@@ -103,6 +103,66 @@ typedef struct AlgebraMatrixInverseTestCase
     char expectedReturn;
 } AlgebraMatrixInverseTestCase;
 
+void getPenetrationVector(
+    const double *bodyAVertices,
+    int bodyAVertexCount,
+    const double *bodyBVertices,
+    int bodyBVertexCount,
+    const double *startingSimplex,
+    double *penetrationVector
+);
+
+int isConvexBodiesIntersect(
+    const double *bodyAVertices,
+    int bodyAVertexCount,
+    const double *bodyBVertices,
+    int bodyBVertexCount,
+    double *nearestPoints,
+    double *lastSimplex
+);
+
+typedef struct
+{
+    double bodyAVertices[36];
+    int bodyAVertexCount;
+    double bodyBVertices[36];
+    int bodyBVertexCount;
+    double expected[3];
+
+} PenetrationVectorTestCase;
+
+PenetrationVectorTestCase penetrationVectorTests[] =
+{
+    {
+        {
+            -1, -1, -1,
+            -1, -1, 1,
+            -1, 1, -1,
+            -1, 1, 1,
+            1, -1, -1,
+            1, -1, 1,
+            1, 1, -1,
+            1, 1, 1,
+        },
+        8,
+        {
+            0, 0, 0,
+            0, 0, 2,
+            0, 2, 0,
+            0, 2, 2,
+            2, 0, 0,
+            2, 0, 2,
+            2, 2, 0,
+            2, 2, 2,
+        },
+        8,
+        {
+            1, 0, 0
+        }
+    }
+};
+
+
 AlgebraMatrixInverseTestCase matrixInverseTests[] =
 {
     {
@@ -1084,6 +1144,78 @@ void runMatrixInverseTests()
         }
     }
 }
+
+void runPenetrationVectorTests()
+{
+    int N = sizeof (penetrationVectorTests) / sizeof (penetrationVectorTests[0]);
+    int i;
+
+    for (i = 0; i < N; i++)
+    {
+        PenetrationVectorTestCase *current = &penetrationVectorTests[i];
+        int j;
+        char passed = 1;
+        double result[3];
+        double lastSimplex[12] = {0};
+
+        if (!isConvexBodiesIntersect(
+            current->bodyAVertices,
+            current->bodyAVertexCount,
+            current->bodyBVertices,
+            current->bodyBVertexCount,
+            0,
+            lastSimplex
+        ))
+        {
+            printf("Penetration vector test #%d FAILED!\n", i + 1);
+            printf("Test failed, because the two bodies don't intersect.\n");
+            continue;
+        }
+
+        getPenetrationVector(
+            current->bodyAVertices,
+            current->bodyAVertexCount,
+            current->bodyBVertices,
+            current->bodyBVertexCount,
+            lastSimplex,
+            result
+        );
+
+
+
+        for (j = 0; j < 3; j++)
+        {
+            if (fabs(result[j] - current->expected[j]) > 1e-9)
+            {
+                passed = 0;
+                break;
+            }
+        }
+        // check
+        if (!passed)
+        {
+            printf("Penetration vector test #%d FAILED!\n", i + 1);
+            printf("Body A vertices:\n");
+            for (i = 0; i < current->bodyAVertexCount; i++)
+            {
+                dumpVector(&current->bodyAVertices[3*i]);
+            }
+            printf("Body B vertices:\n");
+            for (i = 0; i < current->bodyBVertexCount; i++)
+            {
+                dumpVector(&current->bodyBVertices[3*i]);
+            }
+            printf("The result: \n");
+            dumpVector(result);
+            printf("Expected: \n");
+            dumpVector(current->expected);
+        }
+        else
+        {
+            printf("Matrix inverse test #%d passed.\n", i + 1);
+        }
+    }
+}
 //
 int main()
 {
@@ -1113,6 +1245,8 @@ int main()
     runLineSegmentSupportVectorTests();
     printf("Matrix inverse tests:\n");
     runMatrixInverseTests();
+    printf("Penetration vector tests.\n");
+    runPenetrationVectorTests();
     printf("Testing finished.\n");
     fgetc(stdin);
     return 0;

@@ -214,6 +214,18 @@ void moveBody(DYN_Body *body, double subStepFactor)
     }
 }
 
+int compareBodyIndexPair(void *a, void *b)
+{
+    int (*indexA)[2] = (int (*)[2])a;
+    int (*indexB)[2] = (int (*)[2])b;
+
+    if ((*indexA)[0] == (*indexB)[0])
+    {
+        return (*indexA)[1] - (*indexB)[1];
+    }
+    return (*indexA)[0] - (*indexB)[1];
+}
+
 void DYN_initialize(DYN_Context *context, double timeStep)
 {
     context->bodies = 0;
@@ -226,6 +238,7 @@ void DYN_initialize(DYN_Context *context, double timeStep)
     }
     DYNA_initialize(&context->nonCollidingPairs, sizeof( int[2] ));
     DYNA_initialize(&context->collidingPairs, sizeof( int[2] ));
+    AVL_initialize(&context->ncPairIndex, compareBodyIndexPair);
 }
 
 void DYN_deinitialize(DYN_Context *context)
@@ -234,6 +247,7 @@ void DYN_deinitialize(DYN_Context *context)
     free(context->staticAttributes);
     DYNA_deinitialize(&context->nonCollidingPairs);
     DYNA_deinitialize(&context->collidingPairs);
+    AVL_deinitialize(&context->ncPairIndex);
 }
 
 void addCollidingPair(DYN_Context *context, int a, int b)
@@ -247,14 +261,18 @@ void addCollidingPair(DYN_Context *context, int a, int b)
 void addNonCollidingPair(DYN_Context *context, int a, int b)
 {
     int tmp[2];
+    void *added;
+
     tmp[0] = a;
     tmp[1] = b;
-    DYNA_add(&context->nonCollidingPairs, tmp);
+    added = DYNA_add(&context->nonCollidingPairs, tmp);
+    AVL_add(&context->ncPairIndex, added, 0);
 }
 
 void clearNonCollidingPairs(DYN_Context *context)
 {
     DYNA_clear(&context->nonCollidingPairs);
+    AVL_clear(&context->ncPairIndex);
 }
 
 void clearCollidingPairs(DYN_Context *context)
@@ -266,7 +284,7 @@ typedef enum
 {
     DYN_COLLIDED,
     DYN_SEPARATING,
-    DYN_STICKTOGETHER
+    DYN_STICKEDTOGETHER
 } CollisionResult;
 
 CollisionResult resolveCollision
@@ -286,7 +304,7 @@ CollisionResult resolveCollision
     double tmp[3];
     double relativeCollisionPointVelocity[3];
     double impulseStrength;
-    double elasticity = 0.1;
+    double elasticity = 1;
     double normalComponent;
     double tangentialComponent;
     const double CRITICAL_SLOW_SPEED = 0.001;
@@ -320,7 +338,7 @@ CollisionResult resolveCollision
     isSeparatingSlowly = (normalComponent * -elasticity) < CRITICAL_SLOW_SPEED;
     if (isSeparatingSlowly)
     {
-        fprintf(DYN_log, "The two bodies are separating slowly!\n");
+        fprintf(DYN_log, "The two bodies are separating slowly! (elasticity: %g)\n", elasticity);
     }
     fprintf(DYN_log, "Normal component of relative speed: %g\n", normalComponent);
     fprintf(
@@ -328,18 +346,6 @@ CollisionResult resolveCollision
         "Tangential component of relative speed: %g\n",
         tangentialComponent
     );
-/*    if (tangentialComponent != 0)
-    {
-        if (fabs(normalComponent) < CRITICAL_SLOW_SPEED)
-        {
-            // Too slow relative normal component may cause the simulation get stuck.
-            // In this case, cheat a bit: apply bigger impulse than needed.
-            elasticity = 10 * CRITICAL_SLOW_SPEED / fabs(normalComponent);
-            // With this elastivity the ratio of the normal and tangential will be at least the
-            // arbitrarily chosen critical ratio.
-            fprintf(DYN_log, "Elasticity risen to: %g due to small normal component\n", elasticity);
-        }
-    }*/
     if (normalComponent > 0)
     {
         // In this case, the two bodies separating, they cannot collide.
@@ -360,30 +366,6 @@ CollisionResult resolveCollision
         ALG_transform(tmp2, tmp, b->staticAttributes->inverseInertiaTensor);
         ALG_crossProduct(tmpVectorB, tmp2, radiusB);
 
-        /*double radiusAMatrix[9];
-        double radiusBMatrix[9];
-        double tmpMatrixA[9];
-        double tmpMatrixB[9];
-        double tmp[9];
-        double tmpVectorA[3];
-        double tmpVectorB[3];
-        double termA, termB;
-
-        ALG_createCrossProductMatrix(radiusAMatrix, radiusA);
-        ALG_createCrossProductMatrix(radiusBMatrix, radiusB);
-
-        ALG_multiplyMatrix(tmp, radiusAMatrix, a->staticAttributes->inverseInertiaTensor);
-        ALG_multiplyMatrix(tmpMatrixA, tmp, radiusAMatrix);
-
-        ALG_multiplyMatrix(tmp, radiusBMatrix, b->staticAttributes->inverseInertiaTensor);
-        ALG_multiplyMatrix(tmpMatrixB, tmp, radiusBMatrix);
-
-        ALG_transform(tmpVectorA, normal, tmpMatrixA);
-        ALG_transform(tmpVectorB, normal, tmpMatrixB);
-
-        termA = ALG_dotProduct(tmpVectorA, normal);
-        termB = ALG_dotProduct(tmpVectorB, normal);*/
-
         impulseStrength =
             (-(1 + elasticity)*ALG_dotProduct(relativeCollisionPointVelocity, normal) )/
             (1/a->staticAttributes->mass + 1/b->staticAttributes->mass +
@@ -399,7 +381,7 @@ CollisionResult resolveCollision
     applyImpulse(context, a, collisionPoint, normal);
     if (isSeparatingSlowly)
     {
-        return DYN_STICKTOGETHER;
+        return DYN_STICKEDTOGETHER;
     }
     else
     {
@@ -436,13 +418,23 @@ void DYN_stepWorld(DYN_Context *context)
         for (i = 0; i < context->bodyCount; i++)
         {
             context->bodies[i].colliding = 0;
+            context->bodies[i].inContact = 0;
         }
         for (i = 0; i < context->bodyCount; i++)
         {
             for (j = i + 1; j < context->bodyCount; j++)
             {
                 double nearestPoints[6];
-                if (COL_collide(&context->bodies[i], &context->bodies[j], nearestPoints))
+                int tmp[2];
+                tmp[0] = i;
+                tmp[1] = j;
+
+                if (AVL_find(&context->ncPairIndex, tmp))
+                {
+                    continue;
+                }
+
+                if (COL_collide(&context->bodies[i], &context->bodies[j], nearestPoints, 0))
                 {
                     addCollidingPair(context, i, j);
                     wasCollision = 1;
@@ -479,7 +471,7 @@ void DYN_stepWorld(DYN_Context *context)
                     revertMovement(b);
                     moveBody(a, middle);
                     moveBody(b, middle);
-                    if (COL_collide(a, b, nearestPoints))
+                    if (COL_collide(a, b, nearestPoints, 0))
                     {
                         upper = middle;
                     }
@@ -546,9 +538,11 @@ void DYN_stepWorld(DYN_Context *context)
                     currentCollisionPoint,
                     currentImpulseVector
                 );
-                if (result == DYN_STICKTOGETHER)
+                if (result == DYN_STICKEDTOGETHER)
                 {
                     addNonCollidingPair(context, earlyAIndex, earlyBIndex);
+                    context->bodies[earlyAIndex].inContact = 1;
+                    context->bodies[earlyBIndex].inContact = 1;
                 }
             }
             memcpy(DYN_lastCollisionPoint, currentCollisionPoint, sizeof(DYN_lastCollisionPoint));
@@ -556,7 +550,6 @@ void DYN_stepWorld(DYN_Context *context)
             fprintf(DYN_log, "==============================\n");
             //
             clearCollidingPairs(context);
-            clearNonCollidingPairs(context);
             // Continue the simulation
             remainingTime -= minTime;
         }
@@ -572,6 +565,74 @@ void DYN_stepWorld(DYN_Context *context)
             return;
         }
     }
+    // STEP 4: repelling non-colliding pairs
+    {
+        int i;
+        int n = DYNA_getLength(&context->nonCollidingPairs);
+        int (*ncPairs)[2] = (int (*)[2])DYNA_getStorage(&context->nonCollidingPairs);
+        double lastSimplex[12];
+
+        for (i = 0; i < n; i++)
+        {
+            DYN_Body *a = &context->bodies[ncPairs[i][0]];
+            DYN_Body *b = &context->bodies[ncPairs[i][1]];
+
+            if (COL_collide(a, b, 0, lastSimplex))
+            {
+                double penetrationVector[3];
+                fprintf(DYN_log, "Sticked and colliding after timestep!\n");
+                COL_getPenetrationVector(a, b, lastSimplex, penetrationVector);
+                fprintf(
+                    DYN_log,
+                    "Penetration vector was: [%g, %g, %g]\n",
+                    penetrationVector[0],
+                    penetrationVector[1],
+                    penetrationVector[2]
+                );
+                {
+                    // push it out from the body and a little.
+                    double penetrationVectorLength = ALG_getVectorLength(penetrationVector);
+                    double scaleFactor = (penetrationVectorLength + 0.01) / penetrationVectorLength;
+                    ALG_scale(penetrationVector, scaleFactor);
+                }
+                ALG_translate(b->position, penetrationVector);
+                fprintf(DYN_log, "==============================\n");
+                a->colliding = a->inContact = 0;
+                b->colliding = a->inContact = 0;
+                {
+                    // Body b may collide with other bodies. Translate those bodies as well.
+                    DYNA_Array tmp;
+                    int j;
+
+                    DYNA_initialize(&tmp, sizeof(DYN_Body*));
+                    DYNA_add(&tmp, b);
+                    for (j = 0; j < DYNA_getLength(&tmp); j++)
+                    {
+                        DYN_Body **storage = DYNA_getStorage(&tmp);
+                        DYN_Body *current = storage[j];
+
+                        int k = 0;
+                        for (k = 0; k < context->bodyCount; k++)
+                        {
+                            DYN_Body *other = &context->bodies[k];
+
+                            if (other == current) continue;
+
+                            if (COL_collide(current, other, 0, 0))
+                            {
+                                ALG_translate(other->position, penetrationVector);
+                                current->colliding = 0;
+                                other->colliding = 0;
+                                DYNA_add(&tmp, other);
+                            }
+                        }
+                    }
+                    DYNA_deinitialize(&tmp);
+                }
+            }
+        }
+    }
+    clearNonCollidingPairs(context);
     context->elapsedTime += context->timeStep;
 }
 

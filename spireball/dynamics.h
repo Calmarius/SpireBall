@@ -2,6 +2,7 @@
 #define DYNAMICS_H
 
 #include "dynarray.h"
+#include "avltree.h"
 
 /**
  * An enum of the possible shapes.
@@ -28,7 +29,6 @@ typedef struct DYN_BodyStaticAttributes
             double depth;  ///< Dimension in the Z direction
         } cuboidAttributes; ///< Attributes of a cuboid.
     };
-
 } DYN_BodyStaticAttributes;
 
 /**
@@ -65,6 +65,10 @@ typedef struct DYN_Body
      * Nonzero when the body is colliding with something.
      */
     char colliding;
+    /**
+     *
+     */
+    char inContact;
 } DYN_Body;
 
 /**
@@ -89,6 +93,7 @@ typedef struct DYN_Context
      * Noncolliding pairs
      */
      DYNA_Array nonCollidingPairs;
+     AVL_Tree ncPairIndex; ///<
 } DYN_Context;
 
 /**
