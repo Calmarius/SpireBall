@@ -1,6 +1,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <math.h>
 
 #include "collision.h"
 #include "dynamics.h"
@@ -449,6 +450,61 @@ int isConvexBodiesIntersect(
             double svLength = ALG_dotProduct(supportVector, supportVector);
             if (svLength < 1e-9)
             {
+                // support vector is zero, intersection or touching is ensured.
+                // This is a corner case.
+                if (lastSimplex)
+                {
+                    int i;
+                    memcpy(lastSimplex, simplexVertices, 12 * sizeof(*lastSimplex));
+                    // Add some random edge vertices of the difference to the last simplex if needed.
+                    for (i = simplexVertexCount; i < 4; i++)
+                    {
+                        for(;;)
+                        {
+                            int j = 3;
+                            double randomSupport[3];
+                            // get random support vector
+                            while (j--)
+                            {
+                                randomSupport[j] = (rand() % 255 - 128) / 255.0;
+                            }
+                            // Get extreme vector
+                            getExtremePointOfMinkowskiDifference(
+                                bodyAVertices,
+                                bodyAVertexCount,
+                                bodyBVertices,
+                                bodyBVertexCount,
+                                randomSupport,
+                                &maxIndex,
+                                &minIndex,
+                                minkowskiDifference
+                            );
+                            // Check if the new vertex already exist
+                            for (j = 0; j < i; j++)
+                            {
+                                double tmp[3];
+                                ALG_getPointToPointVector(
+                                    tmp,
+                                    &lastSimplex[3*j],
+                                    minkowskiDifference
+                                );
+                                if (ALG_dotProduct(tmp, tmp) < 1e-9)
+                                {
+                                    // This vertex already exists, try again.
+                                    goto try_again;
+                                }
+                            }
+                            // Vertex is new so add it.
+                            break;
+                        try_again:;
+                        }
+                        memcpy(
+                            &lastSimplex[3*i],
+                            minkowskiDifference,
+                            sizeof(minkowskiDifference)
+                        );
+                    }
+                }
                 return 1;
             }
 
@@ -593,6 +649,14 @@ static int polytopeSideComparer(void *a, void *b)
     return 0;
 }
 
+static char isSupportOnEdge(int k, int l)
+{
+    if (fabs(k) < 1e-6) return 1;
+    if (fabs(l) < 1e-6) return 1;
+    if (fabs(k + l - 1) < 1e-6) return 1;
+    return 0;
+}
+
 /**
  * Performs EPA algorithm.
  *
@@ -617,18 +681,23 @@ void getPenetrationVector(
     double nullVector[3] = {0, 0, 0};
     AVL_Tree treeIndex;
     DYNA_Array dynArray;
+    double sumVertex[3] = {0, 0, 0}; //< All politope vertices summed together;
+    int numberOfVertices = 0;
 
-    assert(isPointInTetraHedron(nullVector, startingSimplex));
     AVL_initialize(&treeIndex, polytopeSideComparer);
     DYNA_initialize(&dynArray, sizeof(PolytopeSide));
     // Add the initial triangles
     {
         int i,j;
         // 4 triangles
+        numberOfVertices = 4;
         for (i = 0; i < 4; i++)
         {
             int k = 0;
+            double l, m;
             PolytopeSide tmp;
+
+            ALG_translate(sumVertex, &startingSimplex[i * 3]); //< Sum the vertives together;
             // Get a triange by taking the vertices of the tetraheadron, except the i-th.
             for (j = 0; j < 4; j++)
             {
@@ -640,7 +709,10 @@ void getPenetrationVector(
                 );
                 k++;
             }
-            if (getSupportVectorOfTriangle(tmp.vertices, tmp.supportVector, 0, 0))
+            if (
+                getSupportVectorOfTriangle(tmp.vertices, tmp.supportVector, &l, &m) ||
+                (isSupportOnEdge(l, m))
+            )
             {
                 void *added;
 
@@ -658,10 +730,41 @@ void getPenetrationVector(
     {
         // Get the face which is nearest to the origin.
         AVL_Node *least = AVL_getLeast(&treeIndex);
-        PolytopeSide *pside = AVL_getKey(least);
+        PolytopeSide *pside;
         double newVertex[3];
         PolytopeSide newSide;
         int i, j;
+
+        if (!least)
+        {
+            memset(penetrationVector, 0, 3 * sizeof(*penetrationVector));
+            goto cleanup;
+        }
+        pside = AVL_getKey(least);
+        if (pside->squaredDistance < 1e-9)
+        {
+            double sideA[3];
+            double sideB[3];
+            double normal[3];
+            double center[3];
+            double centerDir[3];
+            // Calculate support vector if the distance is zero
+            ALG_getPointToPointVector(sideA, &pside->vertices[0], &pside->vertices[3]);
+            ALG_getPointToPointVector(sideB, &pside->vertices[0], &pside->vertices[6]);
+            ALG_crossProduct(normal, sideA, sideB);
+            // We have a normal, now determine if it's pointing to the right direction.
+            // Get the center of the current politope.
+            memcpy(center, sumVertex, sizeof(sumVertex));
+            ALG_scale(center, 1.0/numberOfVertices);
+            ALG_getPointToPointVector(centerDir, &pside->vertices[0], center);
+            if (ALG_dotProduct(centerDir, normal) > 0)
+            {
+                // Normal pointing inside.
+                // Reverse it.
+                ALG_scale(centerDir, -1);
+            }
+            memcpy(pside->supportVector, centerDir, sizeof(centerDir));
+        }
 
         // Use its support vector to calculate and add a new vertex.
         getExtremePointOfMinkowskiDifference(
@@ -691,11 +794,15 @@ void getPenetrationVector(
                 goto cleanup;
             }
         }
+        // Add the new vertex to the sum
+        ALG_translate(sumVertex, newVertex);
+        numberOfVertices++;
         // Add new triangles to the index.
         // 3 new triangles.
         for (i = 0; i < 3; i++)
         {
             int k = 0;
+            double l, m;
             // 2 vertex from the old triangle
             for (j = 0; j < 3; j++)
             {
@@ -706,7 +813,7 @@ void getPenetrationVector(
             // plus the new vertex
             memcpy(&newSide.vertices[6], newVertex, 3 * sizeof(double));
             // Calculate support vector on these triangles
-            if (getSupportVectorOfTriangle(newSide.vertices, newSide.supportVector, 0, 0))
+            if (getSupportVectorOfTriangle(newSide.vertices, newSide.supportVector, &l, &m) || isSupportOnEdge(l, m))
             {
                 void *added;
                 newSide.squaredDistance = ALG_dotProduct(
