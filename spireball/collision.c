@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <math.h>
+#include <stdio.h>
 
 #include "collision.h"
 #include "dynamics.h"
@@ -494,6 +495,48 @@ int isConvexBodiesIntersect(
                                     goto try_again;
                                 }
                             }
+                            // Check if the new simplex's area or volume is non zero
+                            {
+                                double sideVectors[9];
+                                int j;
+                                for (j = 0; j < i; j++)
+                                {
+                                    ALG_getPointToPointVector(
+                                        &sideVectors[3*j],
+                                        minkowskiDifference,
+                                        &simplexVertices[3*j]
+                                    );
+                                }
+                                if (i == 2)
+                                {
+
+                                    // Current simplex is a 2-simplex (triangle)
+                                    double det[3];
+                                    ALG_crossProduct(det, &sideVectors[0], &sideVectors[3]);
+                                    printf("2-simplex determinant is: %g\n", ALG_dotProduct(det, det));
+                                    if (ALG_dotProduct(det, det) < 1e-9)
+                                    {
+                                        // This would be a triangle with zero area, bad vertex.
+                                        continue;
+                                    }
+                                }
+                                else if (i == 3)
+                                {
+                                    // Current simplex is a 3-simplex (tetrahedron)
+                                    double det = ALG_getDeterminant(sideVectors);
+                                    printf("3-simplex determinant is: %g\n", det);
+                                    if (fabs(det) < 1e-9)
+                                    {
+                                        // This would be a tetrahedron with zero volume.
+                                        continue;
+                                    }
+                                }
+                                else
+                                {
+                                    assert(0);
+                                }
+
+                            }
                             // Vertex is new so add it.
                             break;
                         try_again:;
@@ -640,12 +683,24 @@ typedef struct
     double squaredDistance;
 } PolytopeSide;
 
-static int polytopeSideComparer(void *a, void *b)
+static int polytopeSideComparer(const void *a, const void *b)
 {
     PolytopeSide *aside = (PolytopeSide*)a;
     PolytopeSide *bside = (PolytopeSide*)b;
+    int i;
+
     if (aside->squaredDistance < bside->squaredDistance) return -1;
     if (aside->squaredDistance > bside->squaredDistance) return 1;
+    // if distance is equal order by vertices. It's a corner case but may happen
+    for (i = 0; i < 9; i++)
+    {
+        double tmp = aside->vertices[i] - bside->vertices[i];
+        if (fabs(tmp) > 1e-9)
+        {
+            return tmp;
+        }
+    }
+
     return 0;
 }
 
@@ -655,6 +710,20 @@ static char isSupportOnEdge(int k, int l)
     if (fabs(l) < 1e-6) return 1;
     if (fabs(k + l - 1) < 1e-6) return 1;
     return 0;
+}
+
+void psideDump(const void *key, const void *value)
+{
+    PolytopeSide *pside = (PolytopeSide*)key;
+
+    printf("polyside in tree ([%g, %g, %g], [%g, %g, %g], [%g, %g, %g]), d*d: %g, [%g, %g, %g]\n",
+        pside->vertices[0], pside->vertices[1], pside->vertices[2],
+        pside->vertices[3], pside->vertices[4], pside->vertices[5],
+        pside->vertices[6], pside->vertices[7], pside->vertices[8],
+        pside->squaredDistance,
+        pside->supportVector[0], pside->supportVector[1], pside->supportVector[2]
+    );
+
 }
 
 /**
@@ -683,56 +752,187 @@ void getPenetrationVector(
     DYNA_Array dynArray;
     double sumVertex[3] = {0, 0, 0}; //< All politope vertices summed together;
     int numberOfVertices = 0;
+    double centerPoint[3] = {0, 0, 0};
+    int i, j, k;
+    enum
+    {
+        NOTHING_SPECIAL,
+        EDGE_AT_ORIGIN,
+        FACE_AT_ORIGIN
+    } specialCase = NOTHING_SPECIAL;
+    double supportVector[3];
 
     AVL_initialize(&treeIndex, polytopeSideComparer);
-    DYNA_initialize(&dynArray, sizeof(PolytopeSide));
+    DYNA_initialize(&dynArray, sizeof(PolytopeSide*));
+    // Do corner case checking here.
+    {
+        double tmp[9];
+        double originSegment[6];
+        double originFace[9];
+        int offendingEdgeCount = 0;
+        int offendingFaceCount = 0;
+        // Check any vertices are near the origin
+        for (i = 0; i < 4; i++)
+        {
+            if (ALG_dotProduct(&startingSimplex[3 * i], &startingSimplex[3 * i]) < 1e-9)
+            {
+                // One vertex is at the origin, penetration vector is zero.
+                printf("Vertex is at the origin.\n");
+                memcpy(penetrationVector, nullVector, sizeof(nullVector));
+                return;
+            }
+        }
+        // Check if any of the edges intersect the origin.
+        for (i = 0; i < 4; i++)
+        {
+            for (j = i + 1; j < 4; j++)
+            {
+                memcpy(tmp, &startingSimplex[3 * i], 3 * sizeof(double));
+                memcpy(&tmp[3], &startingSimplex[3 * j], 3 * sizeof(double));
+                if (getSupportVectorOfLineSegment(tmp, supportVector, 0))
+                {
+                    if (ALG_dotProduct(supportVector, supportVector) < 1e-9)
+                    {
+                        printf("Edge contains the origin.\n");
+                        memcpy(originSegment, tmp, sizeof(originSegment));
+                        offendingEdgeCount++;
+                    }
+                }
+            }
+        }
+        if (offendingEdgeCount == 1)
+        {
+            specialCase = EDGE_AT_ORIGIN;
+            goto cornerCaseTestingFinished;
+        }
+        else
+        {
+            printf("Multiple edges are contain the origin. The initial tetrahedron is a triangle.\n");
+            memcpy(penetrationVector, nullVector, sizeof(nullVector));
+            return;
+        }
+        // Check if any of the face intersect the origin.
+        for (i = 0; i < 4; i++)
+        {
+            for (j = i + 1; j < 4; j++)
+            {
+                for (k = j + 1; k < 4; k++)
+                {
+                    memcpy(tmp, &startingSimplex[3 * i], 3 * sizeof(double));
+                    memcpy(&tmp[3], &startingSimplex[3 * j], 3 * sizeof(double));
+                    memcpy(&tmp[6], &startingSimplex[3 * k], 3 * sizeof(double));
+                    if (getSupportVectorOfTriangle(tmp, supportVector, 0, 0))
+                    {
+                        if (ALG_dotProduct(supportVector, supportVector) < 1e-9)
+                        {
+                            printf("Face is at origin.\n");
+                            memcpy(originFace, tmp, sizeof(originFace));
+                            offendingFaceCount++;
+                        }
+                    }
+                }
+            }
+        }
+        if (offendingFaceCount == 1)
+        {
+            specialCase = FACE_AT_ORIGIN;
+        }
+        else
+        {
+            printf("Multiple edges are contain the origin. The initial tetrahedron is a triangle.\n");
+            memcpy(penetrationVector, nullVector, sizeof(nullVector));
+            return;
+        }
+    }
+cornerCaseTestingFinished:
     // Add the initial triangles
     {
-        int i,j;
+        double extraVertex[3];
+
+        if (specialCase != NOTHING_SPECIAL)
+        {
+            // On special case, we need to calculate the center point of the simplex.
+            // Which is the average of the vertices.
+            for (i = 0; i < 4; i++)
+            {
+                ALG_translate(centerPoint, &startingSimplex[3 * i]);
+            }
+            ALG_scale(centerPoint, 0.25); //< /4
+            memcpy(supportVector, centerPoint, sizeof(supportVector));
+            ALG_scale(supportVector, -1);
+            getExtremePointOfMinkowskiDifference(
+                bodyAVertices,
+                bodyAVertexCount,
+                bodyBVertices,
+                bodyBVertexCount,
+                supportVector,
+                0,
+                0,
+                extraVertex
+            );
+        }
+    }
+
+    {
         // 4 triangles
         numberOfVertices = 4;
+        printf("*******************\n");
+        printf("Politope vertices:\n");
         for (i = 0; i < 4; i++)
         {
             int k = 0;
             double l, m;
-            PolytopeSide tmp;
+            PolytopeSide *tmp = malloc(sizeof(PolytopeSide));
 
+            printf("[%g, %g, %g]\n", startingSimplex[i * 3], startingSimplex[i * 3 + 1], startingSimplex[i * 3 + 2]);
             ALG_translate(sumVertex, &startingSimplex[i * 3]); //< Sum the vertives together;
             // Get a triange by taking the vertices of the tetraheadron, except the i-th.
             for (j = 0; j < 4; j++)
             {
                 if (i == j) continue;
                 memcpy(
-                    &tmp.vertices[k * 3],
+                    &tmp->vertices[k * 3],
                     &startingSimplex[j * 3],
                     3 * sizeof(double)
                 );
                 k++;
             }
             if (
-                getSupportVectorOfTriangle(tmp.vertices, tmp.supportVector, &l, &m) ||
+                getSupportVectorOfTriangle(tmp->vertices, tmp->supportVector, &l, &m) ||
                 (isSupportOnEdge(l, m))
             )
             {
-                void *added;
+                PolytopeSide *pside;
 
-                tmp.squaredDistance = ALG_dotProduct(
-                    tmp.supportVector,
-                    tmp.supportVector
+                tmp->squaredDistance = ALG_dotProduct(
+                    tmp->supportVector,
+                    tmp->supportVector
                 );
-                added = DYNA_add(&dynArray, &tmp);
-                AVL_add(&treeIndex, added, 0);
+                DYNA_add(&dynArray, &tmp);
+                AVL_add(&treeIndex, tmp, 0);
+                pside = (PolytopeSide*)tmp;
+                printf("Added pside ([%g, %g, %g], [%g, %g, %g], [%g, %g, %g]), d*d: %g, [%g, %g, %g]\n",
+                    pside->vertices[0], pside->vertices[1], pside->vertices[2],
+                    pside->vertices[3], pside->vertices[4], pside->vertices[5],
+                    pside->vertices[6], pside->vertices[7], pside->vertices[8],
+                    pside->squaredDistance,
+                    pside->supportVector[0], pside->supportVector[1], pside->supportVector[2]
+                );
             }
         }
+        printf("*******************\n");
     }
     // Do EPA here.
     for(;;)
     {
+        // Debug dump
+        printf("*******************\n");
+        AVL_dumpTree(&treeIndex, psideDump);
         // Get the face which is nearest to the origin.
-        AVL_Node *least = AVL_getLeast(&treeIndex);
-        PolytopeSide *pside;
+        const AVL_Node *least = AVL_getLeast(&treeIndex);
+        const PolytopeSide *pside;
         double newVertex[3];
-        PolytopeSide newSide;
+        PolytopeSide *newSide = 0;
         int i, j;
 
         if (!least)
@@ -741,30 +941,48 @@ void getPenetrationVector(
             goto cleanup;
         }
         pside = AVL_getKey(least);
-        if (pside->squaredDistance < 1e-9)
+        printf("Chosen pside ([%g, %g, %g], [%g, %g, %g], [%g, %g, %g]), d*d: %g, [%g, %g, %g]\n",
+            pside->vertices[0], pside->vertices[1], pside->vertices[2],
+            pside->vertices[3], pside->vertices[4], pside->vertices[5],
+            pside->vertices[6], pside->vertices[7], pside->vertices[8],
+            pside->squaredDistance,
+            pside->supportVector[0], pside->supportVector[1], pside->supportVector[2]
+        );
+        /*if (pside->squaredDistance < 1e-9)
         {
             double sideA[3];
             double sideB[3];
             double normal[3];
             double center[3];
             double centerDir[3];
+
+            printf("Zero vector case.\n");
             // Calculate support vector if the distance is zero
             ALG_getPointToPointVector(sideA, &pside->vertices[0], &pside->vertices[3]);
             ALG_getPointToPointVector(sideB, &pside->vertices[0], &pside->vertices[6]);
             ALG_crossProduct(normal, sideA, sideB);
+            printf("sideA [%g, %g, %g]\n", sideA[0], sideA[1], sideA[2]);
+            printf("sideB [%g, %g, %g]\n", sideB[0], sideB[1], sideB[2]);
             // We have a normal, now determine if it's pointing to the right direction.
             // Get the center of the current politope.
             memcpy(center, sumVertex, sizeof(sumVertex));
             ALG_scale(center, 1.0/numberOfVertices);
+            printf("Center point is: [%g, %g, %g]\n", center[0], center[1], center[2]);
             ALG_getPointToPointVector(centerDir, &pside->vertices[0], center);
             if (ALG_dotProduct(centerDir, normal) > 0)
             {
                 // Normal pointing inside.
                 // Reverse it.
-                ALG_scale(centerDir, -1);
+                ALG_scale(normal, -1);
             }
-            memcpy(pside->supportVector, centerDir, sizeof(centerDir));
-        }
+            memcpy(pside->supportVector, normal, sizeof(normal));
+            printf(
+                "The new support vector is: [%g, %g, %g]\n",
+                pside->supportVector[0],
+                pside->supportVector[1],
+                pside->supportVector[2]
+            );
+        }*/
 
         // Use its support vector to calculate and add a new vertex.
         getExtremePointOfMinkowskiDifference(
@@ -797,34 +1015,58 @@ void getPenetrationVector(
         // Add the new vertex to the sum
         ALG_translate(sumVertex, newVertex);
         numberOfVertices++;
+        printf(
+            "The new vertex is: [%g, %g, %g]\n",
+            newVertex[0],
+            newVertex[1],
+            newVertex[2]
+        );
+
         // Add new triangles to the index.
         // 3 new triangles.
         for (i = 0; i < 3; i++)
         {
             int k = 0;
             double l, m;
+
+            newSide = malloc(sizeof(PolytopeSide));
             // 2 vertex from the old triangle
             for (j = 0; j < 3; j++)
             {
                 if (i == j) continue;
-                memcpy(&newSide.vertices[3 * k], &pside->vertices[3 * j], 3 * sizeof(double));
+                memcpy(&newSide->vertices[3 * k], &pside->vertices[3 * j], 3 * sizeof(double));
                 k++;
             }
             // plus the new vertex
-            memcpy(&newSide.vertices[6], newVertex, 3 * sizeof(double));
+            memcpy(&newSide->vertices[6], newVertex, 3 * sizeof(double));
             // Calculate support vector on these triangles
-            if (getSupportVectorOfTriangle(newSide.vertices, newSide.supportVector, &l, &m) || isSupportOnEdge(l, m))
+            if (getSupportVectorOfTriangle(newSide->vertices, newSide->supportVector, &l, &m) || isSupportOnEdge(l, m))
             {
-                void *added;
-                newSide.squaredDistance = ALG_dotProduct(
-                    newSide.supportVector,
-                    newSide.supportVector
+                PolytopeSide *pside;
+                newSide->squaredDistance = ALG_dotProduct(
+                    newSide->supportVector,
+                    newSide->supportVector
                 );
-                added = DYNA_add(&dynArray, &newSide);
-                AVL_add(&treeIndex, added, 0);
+                DYNA_add(&dynArray, &newSide);
+                AVL_add(&treeIndex, newSide, 0);
+                pside = (PolytopeSide*)newSide;
+                printf("Added pside ([%g, %g, %g], [%g, %g, %g], [%g, %g, %g]), d*d: %g, [%g, %g, %g]\n",
+                    pside->vertices[0], pside->vertices[1], pside->vertices[2],
+                    pside->vertices[3], pside->vertices[4], pside->vertices[5],
+                    pside->vertices[6], pside->vertices[7], pside->vertices[8],
+                    pside->squaredDistance,
+                    pside->supportVector[0], pside->supportVector[1], pside->supportVector[2]
+                );
             }
         }
         // Remove the checked triangle
+        printf("Deleted pside ([%g, %g, %g], [%g, %g, %g], [%g, %g, %g]), d*d: %g, [%g, %g, %g]\n",
+            pside->vertices[0], pside->vertices[1], pside->vertices[2],
+            pside->vertices[3], pside->vertices[4], pside->vertices[5],
+            pside->vertices[6], pside->vertices[7], pside->vertices[8],
+            pside->squaredDistance,
+            pside->supportVector[0], pside->supportVector[1], pside->supportVector[2]
+        );
         AVL_delete(&treeIndex, pside);
     }
 cleanup:

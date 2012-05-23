@@ -67,7 +67,7 @@ void ALG_multiplyMatrix(double *result, const double *a, const double *b);
  * @param [in,out] M The matrix to translate
  * @param [in] T The translator matrix.
  */
-void ALG_translateMatrix(double *M, double *T);
+void ALG_translateMatrix(double *M, const double *T);
 /**
  * Scales the matrix with the given factor.
  *
@@ -109,9 +109,9 @@ void ALG_createRotationMatrix(double *M, const double *axis, double angle);
  * Returns the vector that point from one point to another.
  *
  * @param [in,out] v 3 element array of the element of the resulting vector.
- * @param [in] a,b The the points (3 element vectors). v will be the vector that points from a to b.
+ * @param [in] from,to The the points (3 element vectors). v will be the vector that points from a to b.
  */
-void ALG_getPointToPointVector(double *v, const double *a, const double *b);
+void ALG_getPointToPointVector(double *v, const double *from, const double *to);
 /**
  * Transposes a matrix.
  *

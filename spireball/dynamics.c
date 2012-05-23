@@ -214,7 +214,7 @@ void moveBody(DYN_Body *body, double subStepFactor)
     }
 }
 
-int compareBodyIndexPair(void *a, void *b)
+int compareBodyIndexPair(const void *a, const void *b)
 {
     int (*indexA)[2] = (int (*)[2])a;
     int (*indexB)[2] = (int (*)[2])b;

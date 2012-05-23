@@ -58,7 +58,7 @@ void ALG_multiplyMatrix(double *result, const double *a, const double *b)
     }
 }
 
-void ALG_translateMatrix(double *M, double *T)
+void ALG_translateMatrix(double *M, const double *T)
 {
     int i;
     for (i = 0; i < 9; i++)

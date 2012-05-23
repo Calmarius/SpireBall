@@ -14,7 +14,7 @@ struct AVL_Node
     struct AVL_Node *right;
     int leftHeight;
     int rightHeight;
-    void *key;
+    const void *key;
     void *value;
 };
 
@@ -42,8 +42,32 @@ typedef enum
     ADDED_HEIGHT_INCREASED
 } NodeAddResult;
 
-void rotateLeft(AVL_Tree *tree, AVL_Node *node)
+/**
+ * Rotates the node left.
+ *
+ * @param [in,out] tree The AVL tree.
+ * @param [in,out] node The node to rotate.
+ */
+static void rotateLeft(AVL_Tree *tree, AVL_Node *node)
 {
+    /*
+    Intial node is like this:
+         A
+        /  \
+      B     C
+     / \   / \
+    D   E F   G
+
+    Turned into this:
+
+          C
+         / \
+        A   G
+       / \
+      B   F
+     / \
+    D   E
+    */
     AVL_Node *pivot = node->right;
     AVL_Node *sub;
     assert(pivot);
@@ -67,8 +91,32 @@ void rotateLeft(AVL_Tree *tree, AVL_Node *node)
     if (tree->rootNode == node) tree->rootNode = pivot;
 }
 
-void rotateRight(AVL_Tree *tree, AVL_Node *node)
+/**
+ * Rotates the node right.
+ *
+ * @param [in,out] tree The AVL tree.
+ * @param [in,out] node The node to rotate.
+ */
+static void rotateRight(AVL_Tree *tree, AVL_Node *node)
 {
+    /*
+    Intial node is like this:
+         A
+        /  \
+      B     C
+     / \   / \
+    D   E F   G
+
+    Turned into this:
+
+      B
+     / \
+    D   A
+       / \
+      E   C
+         / \
+        F   G
+    */
     AVL_Node *pivot = node->left;
     AVL_Node *sub;
     assert(pivot);
@@ -92,41 +140,53 @@ void rotateRight(AVL_Tree *tree, AVL_Node *node)
     if (tree->rootNode == node) tree->rootNode = pivot;
 }
 
-void dumpNode(AVL_Node *node, int depth, char dir)
+/**
+ * Dumps a single node.
+ *
+ * @param [in] node The node to dump.
+ * @param [in] depth The depth of the node.
+ * @param [in] dir which subtree (negative: left, positive: right)
+ * @param [in] dumpFn Dump function first argument is the key, second is the value.
+ */
+static void dumpNode(const AVL_Node *node, int depth, char dir, void (*dumpFn)(const void*,const void*))
 {
-    if (!node)
-    {
-        printf("%*s %s (null)\n", depth, " ", dir == -1? "left: " : ( dir == 1 ? "right: " : ""));
-        return;
-    }
-    printf(
-        "%*s %s %d %s [%d %d]\n",
-        depth,
-        " ",
-        dir == -1? "left: " : ( dir == 1 ? "right: " : ""),
-        *(int*)node->key,
-         (char*)node->value,
-         node->leftHeight,
-         node->rightHeight
-    );
+    if (!node) return;
+    dumpFn(node->key, node->value);
 }
 
-void dumpSubtree(AVL_Node *node, int depth, char dir)
+/**
+ * Dumps an entire subtree
+ *
+ * @param [in] node The root node of the subtree.
+ * @param [in] depth The depth of the node.
+ * @param [in] dir which subtree (negative: left, positive: right)
+ * @param [in] dumpFn Dump function first argument is the key, second is the value.
+ */
+static void dumpSubtree(const AVL_Node *node, int depth, char dir, void (*dumpFn)(const void*, const void*))
 {
-    dumpNode(node, depth, dir);
-    if (node) dumpSubtree(node->left, depth + 3, -1);
-    if (node) dumpSubtree(node->right, depth + 3, 1);
+    if (node) dumpSubtree(node->left, depth + 1, -1, dumpFn);
+    dumpNode(node, depth, dir, dumpFn);
+    if (node) dumpSubtree(node->right, depth + 1, 1, dumpFn);
 }
 
-void AVL_dumpTree(AVL_Tree *tree)
+void AVL_dumpTree(const AVL_Tree *tree, void (*dumpFn)(const void*, const void*))
 {
-    dumpSubtree(tree->rootNode, 0, 0);
+    dumpSubtree(tree->rootNode, 0, 0, dumpFn);
     printf("\n");
 }
 
-void reballance(AVL_Tree *tree, AVL_Node *node)
+/**
+ * Reballances the tree, starting from the given node.
+ *
+ * @param [in,out] tree The AVL tree to reballance.
+ * @param [in,out] node The node to start reballancing.
+ *
+ * @note This function is recursively called on the parent node of the given node.
+ */
+static void reballance(AVL_Tree *tree, AVL_Node *node)
 {
     if (!node) return ;
+    // Calculate the height of the subtrees.
     if (node->left)
     {
         node->leftHeight =
@@ -147,6 +207,7 @@ void reballance(AVL_Tree *tree, AVL_Node *node)
     {
         node->rightHeight = 0;
     }
+    // Reballance the node when needed.
     {
         int ballanceFactor = node->leftHeight - node->rightHeight;
         if (ballanceFactor < -1)
@@ -156,9 +217,31 @@ void reballance(AVL_Tree *tree, AVL_Node *node)
             // right subtree is higher
             if (subBallanceFactor == 1)
             {
-                // right-left case extra rotation needed.
+                /*
+                    Right-left case.
+                    B is the current node
+                      B
+                     / \
+                    D   A
+                       / \
+                      E   C
+                     / \
+                    F   G
+                */
+                // Rotate A right to get a right-right case.
                 rotateRight(tree, node->right);
             }
+            /*
+                Right-right case
+                  B
+                 / \
+                D   E
+                   / \
+                  F   A
+                     / \
+                    G   C
+            */
+            // Rotate B left to reballance the node.
             rotateLeft(tree, node);
         }
         else if (ballanceFactor > 1)
@@ -168,20 +251,54 @@ void reballance(AVL_Tree *tree, AVL_Node *node)
             // right subtree is higher
             if (subBallanceFactor == -1)
             {
-                // left-right case extra rotation needed.
+                /*
+                    Left-right case
+                      C
+                     / \
+                    A   G
+                   / \
+                  B   F
+                     / \
+                    D   E
+                */
+                // Rotate A left to get a left-left case.
                 rotateLeft(tree, node->left);
             }
+            /*
+                Left-left case
+                      C
+                     / \
+                    F   G
+                   / \
+                  A   E
+                 / \
+                B   D
+            */
+            // Rotate C right to reballance the node.
             rotateRight(tree, node);
         }
     }
+    // Do the same with the parent node.
     reballance(tree, node->parent);
 }
 
-NodeAddResult addToNode(AVL_Tree *tree, AVL_Node *node, void *key, void *value)
+/**
+ * Adds new element to the subtree.
+ *
+ * @param [in,out] tree AVL tree.
+ * @param [in,out] node Root of the subtree to add to.
+ * @param [in] key The key of the element.
+ * @param [in,out] value The value of the element.
+ *
+ * @retval ADDED The node succesfully added.
+ * @retval EXISTS The node is already exists in the AVL tree.
+ */
+static NodeAddResult addToNode(AVL_Tree *tree, AVL_Node *node, const void *key, void *value)
 {
     int tmp = tree->keyComparer(key, node->key);
     AVL_Node **nodeToAddTo = 0;
 
+    // Find the key in the tree recursively, and add it to a leaf node.
     if (tmp < 0)
     {
         if (node->left)
@@ -212,26 +329,40 @@ NodeAddResult addToNode(AVL_Tree *tree, AVL_Node *node, void *key, void *value)
     (*nodeToAddTo)->parent = node;
     (*nodeToAddTo)->key = key;
     (*nodeToAddTo)->value = value;
+    // Reballance the leaf node.
     reballance(tree, *nodeToAddTo);
 
     return ADDED;
 }
 
-void AVL_add(AVL_Tree *tree, void *key, void *value)
+void AVL_add(AVL_Tree *tree, const void *key, void *value)
 {
     if (!tree->rootNode)
     {
+        // First element.
         tree->rootNode = allocateNode();
         tree->rootNode->key = key;
         tree->rootNode->value = value;
     }
     else
     {
+        // Not the first element.
         addToNode(tree, tree->rootNode, key, value);
     }
 }
 
-AVL_Node *lookup(AVL_Tree *tree, AVL_Node *node, void *key)
+/**
+ * Performs lookup on the subtree of the AVL tree.
+ *
+ * @param [in] tree the AVL tree.
+ * @param [in] node The root of the subtree.
+ * @param [in] key The key to find.
+ *
+ * @note This function is recursively called on the subtrees.
+ *
+ * @return Pointer to the node with the given key, NULL if it's not found in the subtree.
+ */
+static const AVL_Node *lookup(const AVL_Tree *tree, const AVL_Node *node, const void *key)
 {
     int tmp;
 
@@ -252,12 +383,20 @@ AVL_Node *lookup(AVL_Tree *tree, AVL_Node *node, void *key)
     return node;
 }
 
-AVL_Node *AVL_find(AVL_Tree *tree, void *key)
+const AVL_Node *AVL_find(const AVL_Tree *tree, const void *key)
 {
     return lookup(tree, tree->rootNode, key);
 }
 
-void removeNode(AVL_Tree *tree, AVL_Node *node)
+/**
+ * Removes node from the tree
+ *
+ * @param [in,out] tree The AVL tree.
+ * @param [in,out] node The node to remove.
+ *
+ * TODO: Continue documentation here!
+ */
+static void removeNode(AVL_Tree *tree, AVL_Node *node)
 {
     // Move the inorder successor or predecessor to
     // the position of the deleted element.
@@ -319,7 +458,7 @@ void removeNode(AVL_Tree *tree, AVL_Node *node)
     }
 }
 
-void deleteFrom(AVL_Tree *tree, AVL_Node *node, void *key)
+void deleteFrom(AVL_Tree *tree, AVL_Node *node, const void *key)
 {
     int result;
 
@@ -339,7 +478,7 @@ void deleteFrom(AVL_Tree *tree, AVL_Node *node, void *key)
     free(node);
 }
 
-void AVL_delete(AVL_Tree *tree, void *key)
+void AVL_delete(AVL_Tree *tree, const void *key)
 {
     deleteFrom(tree, tree->rootNode, key);
 }
@@ -363,7 +502,7 @@ void AVL_clear(AVL_Tree *tree)
     tree->rootNode = 0;
 }
 
-AVL_Node *AVL_getLeast(AVL_Tree *tree)
+const AVL_Node *AVL_getLeast(const AVL_Tree *tree)
 {
     AVL_Node *current = tree->rootNode;
     if (!current) return 0;
@@ -374,7 +513,7 @@ AVL_Node *AVL_getLeast(AVL_Tree *tree)
     return current;
 }
 
-AVL_Node *AVL_getGreatest(AVL_Tree *tree)
+const AVL_Node *AVL_getGreatest(const AVL_Tree *tree)
 {
     AVL_Node *current = tree->rootNode;
     if (!current) return 0;
@@ -385,12 +524,12 @@ AVL_Node *AVL_getGreatest(AVL_Tree *tree)
     return current;
 }
 
-void *AVL_getKey(AVL_Node *node)
+const void *AVL_getKey(const AVL_Node *node)
 {
     return node->key;
 }
 
-void *AVL_getValue(AVL_Node *node)
+void *AVL_getValue(const AVL_Node *node)
 {
     return node->value;
 }
