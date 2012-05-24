@@ -214,7 +214,10 @@ void moveBody(DYN_Body *body, double subStepFactor)
     }
 }
 
-int compareBodyIndexPair(const void *a, const void *b)
+/**
+ * Compares to non colliding body pair indexes.
+ */
+static int compareBodyIndexPair(const void *a, const void *b)
 {
     int (*indexA)[2] = (int (*)[2])a;
     int (*indexB)[2] = (int (*)[2])b;
@@ -397,6 +400,11 @@ double DYN_lastImpulse[3];
 double *DYN_getLastImpulse() {return DYN_lastImpulse;}
 double *DYN_getLastCollisionPoint() {return DYN_lastCollisionPoint;}
 
+/**
+ * Steps the world.
+ *
+ * This function is not complete, may need some rework.
+ */
 void DYN_stepWorld(DYN_Context *context)
 {
     int i, j;

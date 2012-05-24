@@ -394,7 +394,6 @@ const AVL_Node *AVL_find(const AVL_Tree *tree, const void *key)
  * @param [in,out] tree The AVL tree.
  * @param [in,out] node The node to remove.
  *
- * TODO: Continue documentation here!
  */
 static void removeNode(AVL_Tree *tree, AVL_Node *node)
 {
@@ -423,28 +422,35 @@ static void removeNode(AVL_Tree *tree, AVL_Node *node)
         // Remove the node to move from the tree.
         nodeToUpdate = nodeToMove->parent;
         removeNode(tree, nodeToMove);
-        // update links
+        // Substitute the node to delete with the node to move. (Update all links)
         nodeToMove->parent = node->parent;
         nodeToMove->left = node->left;
         nodeToMove->right = node->right;
-        if (nodeToMove->left) nodeToMove->left->parent = nodeToMove;
-        if (nodeToMove->right) nodeToMove->right->parent = nodeToMove;
-        if (nodeToMove->parent)
+        if (node->left) nodeToMove->left->parent = nodeToMove;
+        if (node->right) nodeToMove->right->parent = nodeToMove;
+        if (node->parent)
         {
-            if (nodeToMove->parent->left == node) nodeToMove->parent->left = nodeToMove;
-            if (nodeToMove->parent->right == node) nodeToMove->parent->right = nodeToMove;
+            if (node->parent->left == node) nodeToMove->parent->left = nodeToMove;
+            if (node->parent->right == node) nodeToMove->parent->right = nodeToMove;
         }
+        // Reballance the moved node's parent
         if (nodeToUpdate != node)
         {
-            reballance(tree, nodeToUpdate); //< continue here.
+            // It's not the node to remove
+            reballance(tree, nodeToUpdate);
         }
         else
         {
+            // It's the node to remove.
+            // But we already substituted it with another node.
+            // So update that node.
             reballance(tree, nodeToMove);
         }
     }
     else
     {
+        // The node to remove is a leaf.
+        // Remove it, update the links and reballance the parent.
         if (node->parent)
         {
             if (node->parent->left == node) node->parent->left = 0;
@@ -452,16 +458,25 @@ static void removeNode(AVL_Tree *tree, AVL_Node *node)
             reballance(tree, node->parent);
         }
     }
+    // Update the root node if that's the node to be removed.
     if (tree->rootNode == node)
     {
         tree->rootNode = nodeToMove;
     }
 }
 
-void deleteFrom(AVL_Tree *tree, AVL_Node *node, const void *key)
+/**
+ * Deletes element from a subtree.
+ *
+ * @param [in,out] tree The AVL tree.
+ * @param [in,out] node The root of the given subtree.
+ * @param [in] key The key of the node.
+ */
+static void deleteFrom(AVL_Tree *tree, AVL_Node *node, const void *key)
 {
     int result;
 
+    // Find the key recursively.
     if (!node) return;
     result = tree->keyComparer(key, node->key);
 
@@ -473,7 +488,7 @@ void deleteFrom(AVL_Tree *tree, AVL_Node *node, const void *key)
     {
         return deleteFrom(tree, node->right, key);
     }
-    // Found
+    // Found the node, so remove it.
     removeNode(tree, node);
     free(node);
 }
@@ -483,7 +498,12 @@ void AVL_delete(AVL_Tree *tree, const void *key)
     deleteFrom(tree, tree->rootNode, key);
 }
 
-void destroy(AVL_Node *node)
+/**
+ * Cleans up the node.
+ *
+ * @param [in,out] node The node to cleanup. The pointer becomes invalid after the call.
+ */
+static void destroy(AVL_Node *node)
 {
     if (!node) return;
     destroy(node->left);
@@ -504,6 +524,7 @@ void AVL_clear(AVL_Tree *tree)
 
 const AVL_Node *AVL_getLeast(const AVL_Tree *tree)
 {
+    // The smallest key is the leftmost
     AVL_Node *current = tree->rootNode;
     if (!current) return 0;
     while (current->left)
@@ -515,6 +536,7 @@ const AVL_Node *AVL_getLeast(const AVL_Tree *tree)
 
 const AVL_Node *AVL_getGreatest(const AVL_Tree *tree)
 {
+    // The greatest key is the rightmost.
     AVL_Node *current = tree->rootNode;
     if (!current) return 0;
     while (current->right)

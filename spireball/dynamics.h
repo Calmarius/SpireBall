@@ -1,3 +1,9 @@
+/**
+ * Dynamics module.
+ *
+ * Moves bodies in the world. Resolves collisions.
+ */
+
 #ifndef DYNAMICS_H
 #define DYNAMICS_H
 

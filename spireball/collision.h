@@ -1,3 +1,9 @@
+/**
+ * Collision module
+ *
+ * Decides when two bodies are collided.
+ */
+
 #include "dynamics.h"
 
 /**

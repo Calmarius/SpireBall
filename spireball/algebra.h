@@ -1,3 +1,7 @@
+/**
+ * Lineral algebra module. Provides vector and matrix operations.
+ */
+
 #ifndef ALG_Vector_H
 #define ALG_Vector_H
 

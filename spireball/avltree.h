@@ -1,3 +1,8 @@
+/**
+ * @file avltree.h
+ * AVL tree module. Provides data structure for quick insert, find and removal.
+ */
+
 #ifndef AVLTREE_H
 #define AVLTREE_H
 

@@ -1,3 +1,7 @@
+/**
+ * Dynamic array module.
+ */
+
 #ifndef DYNARRAY_H
 #define DYNARRAY_H
 

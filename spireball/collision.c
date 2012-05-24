@@ -683,6 +683,9 @@ typedef struct
     double squaredDistance;
 } PolytopeSide;
 
+/**
+ * Compares two politope side.
+ */
 static int polytopeSideComparer(const void *a, const void *b)
 {
     PolytopeSide *aside = (PolytopeSide*)a;
@@ -704,6 +707,15 @@ static int polytopeSideComparer(const void *a, const void *b)
     return 0;
 }
 
+/**
+ * A point on a triangle is given as:
+ *
+ * A + k*v + l*u
+ *
+ * Where A is a vertex, v and u is the two side vector starting from that vertex.
+ *
+ *
+ */
 static char isSupportOnEdge(int k, int l)
 {
     if (fabs(k) < 1e-6) return 1;
@@ -737,6 +749,7 @@ void psideDump(const void *key, const void *value)
  *      Origin must be inside.
  * @param [in,out] penetrationVector The penetration vector, user provided array of 3 doubles.
  *
+ * @warning This function is not complete! Need to rework the expanding politope to be a convex hull.
  */
 void getPenetrationVector(
     const double *bodyAVertices,
